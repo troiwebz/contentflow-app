@@ -394,6 +394,160 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
+    # ── Seed Venus Venture demo project (idempotent) ─────────────────────────
+    import datetime as _dt
+    _vv_exists = c.execute("SELECT id FROM clients WHERE name='Venus Venture'").fetchone()
+    if not _vv_exists:
+        _vv_id  = 'demo-venus-venture-001'
+        _cal_id = 'demo-venus-cal-june-2026'
+        c.execute('''INSERT INTO clients
+            (id,name,niche,business_type,goal,tone_of_voice,campaign_days,goal_type,
+             posting_frequency,unique_selling_point,target_age,target_gender,
+             target_location,target_interests,target_pain_points,
+             brand_colors,competitor_handles,status,color,emoji)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+            _vv_id,
+            'Venus Venture',
+            'Lifestyle & Wellness',
+            'Boutique Wellness Studio',
+            'Build brand awareness and grow online community to 10k followers',
+            'Warm & Inspiring',
+            30, 'followers', 'Daily',
+            'Holistic wellness experiences combining fitness, nutrition and mindfulness in Bangkok',
+            '25–45', 'Primarily Female', 'Bangkok, Thailand',
+            'Yoga, Health Food, Self-Care, Mindfulness, Meditation',
+            'Stress, work-life balance, finding quality wellness services',
+            '#FF6B9D,#C44FFF,#FFD93D',
+            '@wellnessbkk,@yogabangkok',
+            'active', '#FF6B9D', '🌸'
+        ))
+
+        c.execute('''INSERT INTO calendars
+            (id,client_id,month,status,total_budget,goal_type,campaign_days)
+            VALUES (?,?,?,?,?,?,?)''',
+            (_cal_id, _vv_id, 'June 2026', 'active', 150.0, 'followers', 30))
+
+        _today = _dt.date(2026, 6, 1)
+        _concepts = [
+            # (day, content_type, format, hook, problem, solution, cta, platform, status, priority, budget, eng, assigned_to)
+            (1,  'Value Bomb',       'Reel',     '5 morning habits that changed my life 🌅',
+             'You wake up exhausted every day',
+             'A 20-min morning ritual proven to boost energy by 60%',
+             'Save this for tomorrow morning ✨', 'Instagram', 'published', 'high',   5.0, 8.4, 'worker@contentflow.app'),
+            (2,  'Behind the Scenes','Story',    'What a day at Venus Venture really looks like 🌸',
+             'Wellness feels inaccessible and intimidating',
+             'See how welcoming and real our studio is',
+             'Book a free trial class today 👇', 'Instagram', 'published', 'medium', 0.0, 5.1, 'exec@contentflow.app'),
+            (3,  'Testimonial',      'Carousel', '"I lost 5kg and finally sleep well" — Sarah\'s story',
+             'Feeling like nothing works for weight loss',
+             'Consistent yoga + nutrition coaching over 8 weeks',
+             'Read her full story → link in bio', 'Instagram', 'published', 'high',   8.0, 9.2, 'worker@contentflow.app'),
+            (4,  'Educational',      'Reel',     'Why you\'re always hungry at 3pm (and how to fix it)',
+             'Energy crashes and sugar cravings every afternoon',
+             'The right macronutrient balance for sustained energy',
+             'Comment "GUIDE" for our free nutrition PDF 📄', 'Instagram', 'published', 'medium', 5.0, 7.8, 'exec@contentflow.app'),
+            (5,  'Product Promo',    'Reel',     'Introducing our NEW 30-day Glow Up challenge 🔥',
+             'Starting a wellness journey alone is overwhelming',
+             'A structured, community-backed 30-day program',
+             'Join before spots fill — link in bio!', 'Instagram', 'approved', 'high',   10.0, 0.0, 'manager@contentflow.app'),
+            (6,  'Value Bomb',       'Carousel', '7 yoga poses for office workers with back pain',
+             'Sitting at a desk all day destroys your posture',
+             'These 7 gentle stretches take only 10 minutes',
+             'Share with a colleague who needs this 💛', 'Instagram', 'approved', 'medium', 5.0, 0.0, 'worker@contentflow.app'),
+            (7,  'Community Post',   'Story',    'Which class would YOU want us to add? 🙋‍♀️',
+             'Members want more variety in class schedule',
+             'Let the community vote and shape our timetable',
+             'Vote in the poll above ☝️', 'Instagram', 'in_review', 'low',    0.0, 0.0, 'exec@contentflow.app'),
+            (8,  'Educational',      'Reel',     'The truth about detox teas nobody tells you ☕',
+             'Misleading wellness marketing wastes your money',
+             'Science-backed nutrition habits that actually work',
+             'Follow for more evidence-based wellness tips', 'Instagram', 'in_review', 'high',   5.0, 0.0, 'worker@contentflow.app'),
+            (9,  'Collaboration',    'Reel',     'We tried Bangkok\'s top 5 healthy cafes ☕🥗',
+             'Eating healthy in the city is expensive and boring',
+             'Our curated guide to affordable clean-eating spots',
+             'Save this for your next lunch break 📍', 'Instagram', 'idea', 'medium', 0.0, 0.0, 'exec@contentflow.app'),
+            (10, 'Value Bomb',       'Carousel', '10 signs your cortisol is too high (and what to do)',
+             'Chronic stress silently damages your health',
+             'Practical daily habits to lower cortisol naturally',
+             'Tag a friend who needs to see this 🫶', 'Instagram', 'idea', 'high',   5.0, 0.0, ''),
+            (11, 'Testimonial',      'Reel',     '"I went from 0 to running 5km in 6 weeks" — Tom\'s story',
+             'Beginners feel embarrassed joining fitness classes',
+             'Our beginner-friendly programs welcome all levels',
+             'DM us "START" to begin your journey', 'Instagram', 'idea', 'medium', 8.0, 0.0, ''),
+            (12, 'Product Promo',    'Carousel', 'Our June membership deal — 30% off all plans 🎉',
+             'Premium wellness is out of budget for many people',
+             'Limited-time offer makes quality wellness accessible',
+             'Tap the link in bio before June 15 ⏰', 'Instagram', 'idea', 'high',   15.0, 0.0, ''),
+            (13, 'Educational',      'Reel',     'How to meditate when your mind won\'t stop racing 🧠',
+             'People give up meditation because it feels impossible',
+             'The 4-7-8 breathing technique for instant calm',
+             'Try this tonight and tell us how it goes 💬', 'Instagram', 'idea', 'medium', 5.0, 0.0, ''),
+            (14, 'Behind the Scenes','Reel',     'Prepping 200 acai bowls for our studio opening 🍓',
+             'People don\'t know the hard work behind the brand',
+             'An authentic look at our team and passion',
+             'Follow our journey 🌸', 'Instagram', 'idea', 'low',    0.0, 0.0, ''),
+            (15, 'Value Bomb',       'Carousel', 'The 5-minute bedtime routine for deeper sleep 😴',
+             'Poor sleep ruins workout recovery and mood',
+             'Science-backed pre-sleep habits for quality rest',
+             'Save + share with someone who can\'t sleep 💤', 'Instagram', 'idea', 'high',   5.0, 0.0, ''),
+        ]
+
+        _status_map = {
+            'published': ('published', '2026-05-{:02d}'),
+            'approved':  ('approved',  None),
+            'in_review': ('in_review', None),
+            'idea':      ('idea',      None),
+        }
+
+        for i, (day, ctype, fmt, hook, prob, sol, cta, plat, status, prio, budget, eng, assignee) in enumerate(_concepts):
+            cid = f'demo-vv-concept-{i+1:03d}'
+            date_str = (_today + _dt.timedelta(days=day-1)).isoformat()
+            c.execute('''INSERT INTO concepts
+                (id,calendar_id,day,date,content_type,format,hook,problem,solution,
+                 cta,platform,status,assigned_to,priority,daily_budget,predicted_engagement)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+                cid, _cal_id, day, date_str, ctype, fmt, hook, prob, sol,
+                cta, plat, status, assignee, prio, budget, eng
+            ))
+
+            # Add captions for published concepts
+            if status == 'published':
+                cap_id = f'demo-vv-cap-{i+1:03d}'
+                caption_text = f"{hook}\n\n{sol}\n\n{cta}\n\n#VenusVenture #WellnessBangkok #HealthyLiving"
+                c.execute('INSERT INTO captions (id,concept_id,variation_number,text) VALUES (?,?,?,?)',
+                          (cap_id, cid, 1, caption_text))
+                for j, tag in enumerate(['VenusVenture','WellnessBangkok','HealthyLiving','SelfCare','YogaBKK']):
+                    c.execute('INSERT INTO hashtags (id,concept_id,tag,volume_level) VALUES (?,?,?,?)',
+                              (f'demo-vv-tag-{i+1:03d}-{j}', cid, f'#{tag}', ['high','high','medium','medium','low'][j]))
+
+            # Add task records
+            task_status = 'published' if status == 'published' else ('approved' if status == 'approved' else 'todo')
+            c.execute('''INSERT INTO tasks (id,concept_id,assigned_to,status,priority,due_date)
+                VALUES (?,?,?,?,?,?)''',
+                (f'demo-vv-task-{i+1:03d}', cid, assignee, task_status, prio,
+                 (_today + _dt.timedelta(days=day-1)).isoformat()))
+
+            # Add metrics for published concepts
+            if status == 'published':
+                views   = [3400, 1200, 5800, 2900][i % 4]
+                clicks  = int(views * 0.08)
+                saves   = int(views * 0.05)
+                sales   = [2, 0, 3, 1][i % 4]
+                fgain   = [12, 5, 22, 9][i % 4]
+                c.execute('''INSERT INTO metrics
+                    (id,concept_id,date,views,engagement_rate,clicks,saves,sales,follower_gain)
+                    VALUES (?,?,?,?,?,?,?,?,?)''',
+                    (f'demo-vv-metric-{i+1:03d}', cid, date_str, views, eng, clicks, saves, sales, fgain))
+
+        # Add demo team members
+        for tid, tname, trole, tcolor in [
+            ('demo-vv-tm-1','Sofia Kaewmanee','Yoga Instructor','#FF6B9D'),
+            ('demo-vv-tm-2','Arisa Thongdee','Nutritionist','#C44FFF'),
+            ('demo-vv-tm-3','Mika Suzuki','Content Creator','#FFD93D'),
+        ]:
+            c.execute('''INSERT OR IGNORE INTO team_members (id,name,role,client_id,avatar_color)
+                VALUES (?,?,?,?,?)''', (tid, tname, trole, _vv_id, tcolor))
+
     conn.commit()
     conn.close()
 
