@@ -4,6 +4,66 @@
 
 const API = '/api';
 
+// ── IST date helper ───────────────────────────────────────────────────────
+// Returns a Date at midnight representing today in IST (UTC+5:30)
+function todayIST() {
+  const istStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
+  const [y, m, d] = istStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// ── Campaign execution stats ──────────────────────────────────────────────
+// Classifies every concept into success / delayed / failed / pending
+//   success  = published
+//   delayed  = past due AND was in pipeline (submitted / in_review / approved) but not published
+//   failed   = past due AND never reached review (idea / assigned / in_progress)
+//   pending  = due date is today or future
+function computeConceptStats(concepts) {
+  const todayMid = todayIST();
+  let success = 0, delayed = 0, failed = 0, pending = 0;
+  const pipelineStages = new Set(['submitted', 'in_review', 'approved']);
+  const earlyStages    = new Set(['idea', 'assigned', 'in_progress']);
+  concepts.forEach(c => {
+    const st  = (c.status || 'idea').toLowerCase();
+    const dt  = c.date ? new Date(c.date + 'T00:00:00') : null;
+    const past = dt && dt < todayMid;
+    if (st === 'published')              success++;
+    else if (past && pipelineStages.has(st)) delayed++;
+    else if (past && earlyStages.has(st))    failed++;
+    else                                     pending++;
+  });
+  const total = concepts.length || 1;
+  return { success, delayed, failed, pending, total: concepts.length,
+           pctSuccess: Math.round(success / total * 100),
+           pctDelayed: Math.round(delayed / total * 100),
+           pctFailed:  Math.round(failed  / total * 100),
+           pctPending: Math.round(pending / total * 100) };
+}
+
+// ── Stats banner renderer ─────────────────────────────────────────────────
+function renderStatsBanner(stats, label) {
+  if (!stats.total) return '';
+  const pctS = stats.pctSuccess, pctD = stats.pctDelayed,
+        pctF = stats.pctFailed,  pctP = stats.pctPending;
+  return `
+  <div class="exec-stats-banner">
+    ${label ? `<div class="exec-stats-label">${label}</div>` : ''}
+    <div class="exec-stats-bar">
+      ${pctS ? `<div class="esb-seg esb-success" style="width:${pctS}%" title="Published ${pctS}%"></div>` : ''}
+      ${pctD ? `<div class="esb-seg esb-delayed" style="width:${pctD}%" title="Delayed ${pctD}%"></div>` : ''}
+      ${pctF ? `<div class="esb-seg esb-failed"  style="width:${pctF}%" title="Failed ${pctF}%"></div>` : ''}
+      ${pctP ? `<div class="esb-seg esb-pending" style="width:${pctP}%" title="Pending ${pctP}%"></div>` : ''}
+    </div>
+    <div class="exec-stats-legend">
+      <span class="esl-dot" style="background:#10b981"></span><span>Success ${pctS}%&nbsp;(${stats.success})</span>
+      <span class="esl-dot" style="background:#f59e0b"></span><span>Delayed ${pctD}%&nbsp;(${stats.delayed})</span>
+      <span class="esl-dot" style="background:#ef4444"></span><span>Failed ${pctF}%&nbsp;(${stats.failed})</span>
+      <span class="esl-dot" style="background:#9ca3af"></span><span>Pending ${pctP}%&nbsp;(${stats.pending})</span>
+      <span style="margin-left:auto;color:var(--text-muted);font-size:11px;">${stats.total} total posts</span>
+    </div>
+  </div>`;
+}
+
 // ── Format label helper (used everywhere format is displayed) ─────────────
 const FMT_MAP = {
   carousel:     { label: 'Carousel',         icon: '📱', color: '#6366f1' },
@@ -57,49 +117,55 @@ const state = {
 
 // ── Role-Based Access Control ─────────────────────────────────────────────
 //
-//  admin     — full access, manage users, delete anything
-//  manager   — grid + board + calendar + list, invite members, NO delete comment
-//  executive — calendar + list only, mark done, comment, ads
-//  worker    — calendar + list only (same as executive, different label)
+//  admin     — separate login, full control, manage users, delete anything
+//  manager   — full access, create campaigns, invite VA members
+//  va        — Virtual Assistant: view everything, NO create/generate/delete
 //
 const ROLE_PERMS = {
-  admin:     { grid:true,  board:true,  calendar:true, list:true,
-               generate:true,  assign:true,   deleteContent:true,
-               deleteComment:true,  manageUsers:true, invite:true,
-               editConcept:true, moveCard:true },
-  manager:   { grid:true,  board:true,  calendar:true, list:true,
-               generate:true,  assign:true,   deleteContent:false,
-               deleteComment:false, manageUsers:false, invite:true,
-               editConcept:true, moveCard:true },
-  executive: { grid:false, board:false, calendar:true, list:true,
-               generate:false, assign:false,  deleteContent:false,
+  admin:   { grid:true,  board:true,  calendar:true, list:true,
+             generate:true,  assign:true,   deleteContent:true,  deleteProject:true,
+             deleteComment:true,  manageUsers:true, invite:true,
+             editConcept:true, moveCard:true },
+  manager: { grid:true,  board:true,  calendar:true, list:true,
+             generate:true,  assign:true,   deleteContent:false, deleteProject:true,
+             deleteComment:false, manageUsers:false, invite:true,
+             editConcept:true, moveCard:true },
+  va:      { grid:true,  board:true,  calendar:true, list:true,
+             generate:false, assign:false,  deleteContent:false, deleteProject:false,
+             deleteComment:false, manageUsers:false, invite:false,
+             editConcept:false, moveCard:false },
+  // legacy aliases — map old roles to nearest new equivalent
+  worker:    { grid:true, board:true, calendar:true, list:true,
+               generate:false, assign:false, deleteContent:false, deleteProject:false,
                deleteComment:false, manageUsers:false, invite:false,
                editConcept:false, moveCard:false },
-  worker:    { grid:false, board:false, calendar:true, list:true,
-               generate:false, assign:false,  deleteContent:false,
+  executive: { grid:true, board:true, calendar:true, list:true,
+               generate:false, assign:false, deleteContent:false, deleteProject:false,
                deleteComment:false, manageUsers:false, invite:false,
                editConcept:false, moveCard:false },
 };
 
 function can(action) {
-  const role = (state.currentUser && state.currentUser.role) || 'worker';
-  const perms = ROLE_PERMS[role] || ROLE_PERMS.worker;
+  const role = (state.currentUser && state.currentUser.role) || 'va';
+  const perms = ROLE_PERMS[role] || ROLE_PERMS.va;
   return !!perms[action];
 }
 
 function myRole() {
-  return (state.currentUser && state.currentUser.role) || 'worker';
+  return (state.currentUser && state.currentUser.role) || 'va';
 }
 
 // Labels & colours for each role
 const ROLE_META = {
-  admin:     { label: 'Admin',     color: '#ef4444', bg: '#fef2f2', icon: '🛡️' },
-  manager:   { label: 'Manager',   color: '#f59e0b', bg: '#fffbeb', icon: '⚙️' },
-  executive: { label: 'Executive', color: '#3b82f6', bg: '#eff6ff', icon: '💼' },
-  worker:    { label: 'Worker',    color: '#10b981', bg: '#f0fdf4', icon: '🎨' },
+  admin:     { label: 'Admin',             color: '#ef4444', bg: '#fef2f2', icon: '🛡️' },
+  manager:   { label: 'Manager',           color: '#f59e0b', bg: '#fffbeb', icon: '⚙️' },
+  va:        { label: 'Virtual Assistant', color: '#6366f1', bg: '#eef2ff', icon: '🎯' },
+  // legacy
+  worker:    { label: 'Worker',            color: '#10b981', bg: '#f0fdf4', icon: '🎨' },
+  executive: { label: 'Executive',         color: '#3b82f6', bg: '#eff6ff', icon: '💼' },
 };
 
-function roleMeta(r) { return ROLE_META[r] || ROLE_META.worker; }
+function roleMeta(r) { return ROLE_META[r] || ROLE_META.va; }
 
 async function loadCurrentUser() {
   // state.currentUser is already set from window.__CF_USER__ (server-rendered, synchronous).
@@ -340,9 +406,9 @@ function applyTopbarRoleGates() {
   const genBtn = document.querySelector('.project-topbar-right .btn-primary');
   if (genBtn) genBtn.style.display = can('generate') ? '' : 'none';
 
-  // "Delete Project" in project menu — admin only
+  // "Delete Project" in project menu — admin + manager
   const delBtn = document.querySelector('.project-menu .danger');
-  if (delBtn) delBtn.style.display = can('deleteContent') ? '' : 'none';
+  if (delBtn) delBtn.style.display = can('deleteProject') ? '' : 'none';
 
   // Inject Invite + Manage Users buttons into topbar if not there yet
   const topbarRight = document.querySelector('.project-topbar-right');
@@ -414,6 +480,10 @@ async function loadSidebar() {
     if (!projects.length) {
       container.innerHTML = '<div class="sidebar-empty">No projects yet</div>';
       return;
+    }
+    // If home view is visible, load the aggregate stats banner
+    if (!document.getElementById('view-project')?.classList.contains('active')) {
+      loadAllProjectsStats();
     }
     container.innerHTML = projects.map(p => `
       <div class="sidebar-project-item ${p.id === state.currentProjectId ? 'active' : ''}"
@@ -494,6 +564,14 @@ function renderProjectStats(project) {
   const el = document.getElementById('project-stats-row');
   if (!el) return;
 
+  // Compute stats from the live concepts list if available, else approximate
+  const allConcepts = (project.calendars || []).flatMap(cal => cal.concepts || []);
+  const pStats = allConcepts.length
+    ? computeConceptStats(allConcepts)
+    : { success: published, delayed: 0, failed: 0, pending: total - published,
+        total, pctSuccess: total ? Math.round(published/total*100) : 0,
+        pctDelayed: 0, pctFailed: 0, pctPending: total ? Math.round((total-published)/total*100) : 0 };
+
   el.innerHTML = `
     <div class="stat-card">
       <div class="stat-icon">📝</div>
@@ -503,7 +581,7 @@ function renderProjectStats(project) {
     <div class="stat-card">
       <div class="stat-icon">✅</div>
       <div class="stat-label">Published</div>
-      <div class="stat-value">${published}</div>
+      <div class="stat-value" style="color:#10b981;">${published}</div>
     </div>
     <div class="stat-card">
       <div class="stat-icon">📅</div>
@@ -526,6 +604,10 @@ function renderProjectStats(project) {
       <div class="stat-value" style="font-size:13px;">${project.goal_type === 'sales' ? 'Drive Sales' : 'Grow Followers'}</div>
     </div>
   `;
+
+  // Inject execution stats banner below the stat cards
+  const bannerEl = document.getElementById('project-exec-banner');
+  if (bannerEl) bannerEl.innerHTML = renderStatsBanner(pStats, 'Campaign Execution');
 }
 
 // ── Project Tabs ──────────────────────────────────────────────────────────
@@ -761,24 +843,27 @@ function renderBoard() {
     return;
   }
 
-  const todayMid = new Date(); todayMid.setHours(0,0,0,0);
+  // Use IST midnight so "day ended in IST" is the threshold
+  const todayMid = todayIST();
   const validKeys = new Set(BOARD_COLS.map(c => c.key));
   const grouped = {};
   BOARD_COLS.forEach(c => grouped[c.key] = []);
-  // "Failed" = post date has passed AND status is still in early stage
-  // (idea / assigned / in_progress). If someone submitted/approved/published
-  // even late, it belongs in the real status column, not Failed.
-  const failedStages = new Set(['idea', 'assigned', 'in_progress']);
+  // Any non-published concept whose date has passed in IST → Failed column
   _boardConcepts.forEach(c => {
     const raw      = (c.status || 'idea').toLowerCase();
     const cardDate = c.date ? new Date(c.date + 'T00:00:00') : null;
-    const isOverdue = cardDate && cardDate < todayMid && failedStages.has(raw);
-    if (isOverdue) {
+    const pastDue  = cardDate && cardDate < todayMid;
+    if (pastDue && raw !== 'published') {
       grouped['failed'].push(c);
     } else {
       grouped[validKeys.has(raw) ? raw : 'idea'].push(c);
     }
   });
+
+  // Compute & inject stats banner above board columns
+  const boardStats = computeConceptStats(_boardConcepts);
+  const boardBanner = document.getElementById('board-stats-banner');
+  if (boardBanner) boardBanner.innerHTML = renderStatsBanner(boardStats, '');
 
   container.innerHTML = BOARD_COLS.map(col => {
     // Build generate buttons inside the map so `col` is defined
@@ -1425,6 +1510,14 @@ async function triggerCreative(conceptId, format, type, prefix) {
     const vidData = typeof data.video_prompt === 'string' ? JSON.parse(data.video_prompt) : data.video_prompt;
     _creativeCache[`${conceptId}-image-${_creativeLang}`] = { data: imgData, format };
     _creativeCache[`${conceptId}-video-${_creativeLang}`] = { data: vidData, format };
+    // ── Patch in-state concept so reopening the modal auto-renders without clicking Generate ──
+    if (state.currentCalendarData) {
+      const sc = (state.currentCalendarData.concepts || []).find(x => x.id === conceptId);
+      if (sc) {
+        if (imgData) sc.image_prompt = imgData;
+        if (vidData) sc.video_prompt = vidData;
+      }
+    }
     renderCreativeWithRegenBtn(el, _creativeCache[cacheKey], type, format, conceptId, prefix);
   } catch(e) {
     if (btn) { btn.disabled = false; btn.innerHTML = type === 'image' ? '<i class="fas fa-magic"></i> Generate Canva Instructions' : '<i class="fas fa-robot"></i> Generate HeyGen Script'; }
@@ -1617,7 +1710,7 @@ function renderCreative(el, creative, type, format) {
   const isCarouselFormat = /carousel/i.test(format || '');
   const hasNewImgSchema  = !!(d.offer_title || d.slides || d.h1 || d.canva_bg_prompt);
   const hasOldImgSchema  = !!(d.thumbnail_prompt || d.key_frames);
-  const hasNewVidSchema  = !!(d.avatar || d.scenes);
+  const hasNewVidSchema  = !!(d.avatar || d.scenes || d.lines);
   const hasOldVidSchema  = !!(d.heygen_avatar_style || d.scene_breakdown);
 
   if (type === 'image') {
@@ -1732,28 +1825,48 @@ function renderCreative(el, creative, type, format) {
     }
 
   } else {
-    // ── Video: new schema (avatar + scenes) ───────────────────────────────
+    // ── Video: new schema (lines or scenes) ───────────────────────────────
     if (hasNewVidSchema) {
-      const fullScript = d.full_script || (d.scenes || []).map(s => s.script).filter(Boolean).join(' ');
-      const vidLines = [];
-      if (d.avatar)   { vidLines.push('[AVATAR]'); vidLines.push(d.avatar); vidLines.push(''); }
-      if (fullScript) { vidLines.push('[FULL SCRIPT]'); vidLines.push(fullScript); vidLines.push(''); }
-      (d.scenes || []).forEach(s => {
-        vidLines.push(`[SCENE ${s.scene || ''} — ${s.timestamps || ''}]`);
-        vidLines.push(s.script || '');
-        if (s.on_screen_text) vidLines.push(`On screen: ${s.on_screen_text}`);
-        vidLines.push('');
-      });
-      if (d.music_style)   { vidLines.push('[MUSIC]'); vidLines.push(d.music_style); }
-      if (d.caption_style) { vidLines.push('[CAPTIONS]'); vidLines.push(d.caption_style); }
-      const combined = vidLines.join('\n');
-      el.innerHTML = `
-        <div class="prompt-block" data-copy="${esc(combined)}">
-          <pre class="prompt-text">${esc(combined)}</pre>
-          <button class="prompt-copy-btn" onclick="copyFromData(this)">
-            <i class="fas fa-copy"></i> Copy
-          </button>
-        </div>`;
+      const scriptLines = d.lines || (d.scenes||[]).map((s,i)=>({line:i+1,script:s.script,duration_s:s.duration_s||s.timestamps}));
+      if (scriptLines.length) {
+        // New 6-line format — render visually
+        const linesHtml = scriptLines.map((s,i) => {
+          const num = s.line || s.scene || i+1;
+          const dur = s.duration_s || 3;
+          const txt = s.script || '';
+          return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;margin-bottom:6px;background:#fdf2f8;border-left:3px solid #ec4899;border-radius:0 6px 6px 0;">
+            <span style="min-width:58px;font-size:11px;font-weight:700;color:#ec4899;">LINE ${num} · ${dur}s</span>
+            <span style="font-size:13px;font-weight:500;flex:1;">${esc(txt)}</span>
+            <button class="copy-btn" onclick="copyText(this,'${txt.replace(/'/g,"&#39;")}')" style="flex-shrink:0;"><i class="fas fa-copy"></i></button>
+          </div>`;
+        }).join('');
+        const allScript = scriptLines.map(s=>s.script||'').join(' ');
+        el.innerHTML = `
+          <div class="creative-section">
+            <div class="creative-chip heygen-chip" style="background:#fce7f3;color:#ec4899;border-color:#f9a8d4;"><i class="fas fa-robot"></i> HeyGen Script · ${d.duration_seconds||18}s · 6 lines</div>
+            ${d.hook ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;padding:6px 10px;background:#f3f4f6;border-radius:6px;"><strong>Topic:</strong> ${esc(d.hook)}</div>` : ''}
+            <div style="margin-bottom:8px;">${linesHtml}</div>
+            ${d.lower_third ? `<div class="creative-note"><i class="fas fa-closed-captioning"></i> Lower third: <strong>${esc(d.lower_third)}</strong></div>` : ''}
+            ${d.avatar_suggestion ? `<div class="creative-note"><i class="fas fa-user-circle"></i> Avatar: ${esc(d.avatar_suggestion)}</div>` : ''}
+            ${d.background_suggestion ? `<div class="creative-note"><i class="fas fa-image"></i> Background: ${esc(d.background_suggestion)}</div>` : ''}
+            ${d.cta_text ? `<div class="creative-note" style="color:#10b981;"><i class="fas fa-bullhorn"></i> CTA: ${esc(d.cta_text)}</div>` : ''}
+            <button class="copy-btn" style="margin-top:8px;width:100%;justify-content:center;padding:8px;" onclick="copyText(this,'${allScript.replace(/'/g,"&#39;")}')"><i class="fas fa-copy"></i> Copy Full Script</button>
+          </div>`;
+      } else {
+        // Legacy scenes fallback
+        const fullScript = d.full_script || '';
+        const vidLines = [];
+        if (d.avatar)   { vidLines.push('[AVATAR]'); vidLines.push(d.avatar); vidLines.push(''); }
+        if (fullScript) { vidLines.push('[FULL SCRIPT]'); vidLines.push(fullScript); vidLines.push(''); }
+        (d.scenes || []).forEach(s => {
+          vidLines.push(`[SCENE ${s.scene||''} — ${s.timestamps||''}]`);
+          vidLines.push(s.script || '');
+          if (s.on_screen_text) vidLines.push(`On screen: ${s.on_screen_text}`);
+          vidLines.push('');
+        });
+        const combined = vidLines.join('\n');
+        el.innerHTML = `<div class="prompt-block" data-copy="${esc(combined)}"><pre class="prompt-text">${esc(combined)}</pre><button class="prompt-copy-btn" onclick="copyFromData(this)"><i class="fas fa-copy"></i> Copy</button></div>`;
+      }
 
     // ── Video: old schema fallback ─────────────────────────────────────────
     } else if (hasOldVidSchema) {
@@ -2013,7 +2126,7 @@ async function openUserManager() {
         <div class="umgr-email">${esc(u.email)}</div>
       </div>
       <select class="umgr-role-select select-sm" onchange="changeUserRole('${u.id}', this.value)">
-        ${['admin','manager','executive','worker'].map(r =>
+        ${['admin','manager','va'].map(r =>
           `<option value="${r}" ${u.role===r?'selected':''}>${roleMeta(r).icon} ${roleMeta(r).label}</option>`
         ).join('')}
       </select>
@@ -2047,7 +2160,7 @@ function openInviteModal() {
     document.getElementById('inv-name').value = '';
     document.getElementById('inv-phone').value = '';
     document.getElementById('inv-email').value = '';
-    document.getElementById('inv-role').value = myRole() === 'admin' ? 'worker' : 'worker';
+    document.getElementById('inv-role').value = 'va';
     document.getElementById('inv-result').innerHTML = '';
     modal.classList.add('open');
   }
@@ -2250,23 +2363,27 @@ async function openConceptModal(conceptId) {
   `;
   openModal('conceptModal');
 
-  // Auto-render cached creative so user doesn't have to click Generate each time
-  if (c.image_prompt || c.video_prompt) {
-    try {
-      const imgData = c.image_prompt ? (typeof c.image_prompt === 'string' ? JSON.parse(c.image_prompt) : c.image_prompt) : null;
-      const vidData = c.video_prompt ? (typeof c.video_prompt === 'string' ? JSON.parse(c.video_prompt) : c.video_prompt) : null;
-      if (imgData) {
-        _creativeCache[`${c.id}-image-en`] = { data: imgData, format: c.format };
-        const imgEl = document.getElementById(`cm-imgprompt-content-${c.id}`);
-        if (imgEl) renderCreativeWithRegenBtn(imgEl, { data: imgData, format: c.format }, 'image', c.format, c.id, 'cm');
-      }
-      if (vidData) {
-        _creativeCache[`${c.id}-video-en`] = { data: vidData, format: c.format };
-        const vidEl = document.getElementById(`cm-vidprompt-content-${c.id}`);
-        if (vidEl) renderCreativeWithRegenBtn(vidEl, { data: vidData, format: c.format }, 'video', c.format, c.id, 'cm');
-      }
-    } catch(e) { /* leave Generate button showing if data is malformed */ }
-  }
+  // Auto-render saved creative — check _creativeCache first (updated same session),
+  // then fall back to DB-loaded image_prompt / video_prompt on the concept object.
+  const imgCacheKey = `${c.id}-image-${_creativeLang}`;
+  const vidCacheKey = `${c.id}-video-${_creativeLang}`;
+  try {
+    const imgData = (_creativeCache[imgCacheKey] && _creativeCache[imgCacheKey].data)
+      || (c.image_prompt ? (typeof c.image_prompt === 'string' ? JSON.parse(c.image_prompt) : c.image_prompt) : null);
+    const vidData = (_creativeCache[vidCacheKey] && _creativeCache[vidCacheKey].data)
+      || (c.video_prompt ? (typeof c.video_prompt === 'string' ? JSON.parse(c.video_prompt) : c.video_prompt) : null);
+
+    if (imgData) {
+      if (!_creativeCache[imgCacheKey]) _creativeCache[imgCacheKey] = { data: imgData, format: c.format };
+      const imgEl = document.getElementById(`cm-imgprompt-content-${c.id}`);
+      if (imgEl) renderCreativeWithRegenBtn(imgEl, { data: imgData, format: c.format }, 'image', c.format, c.id, 'cm');
+    }
+    if (vidData) {
+      if (!_creativeCache[vidCacheKey]) _creativeCache[vidCacheKey] = { data: vidData, format: c.format };
+      const vidEl = document.getElementById(`cm-vidprompt-content-${c.id}`);
+      if (vidEl) renderCreativeWithRegenBtn(vidEl, { data: vidData, format: c.format }, 'video', c.format, c.id, 'cm');
+    }
+  } catch(e) { /* leave Generate button showing if data is malformed */ }
 }
 
 async function addCommentModal(conceptId) {
@@ -2503,6 +2620,66 @@ async function loadGlobalAnalytics() {
   } catch(e) {}
 }
 
+// ── All-projects aggregate stats banner ───────────────────────────────────
+async function loadAllProjectsStats() {
+  const el = document.getElementById('all-projects-exec-banner');
+  if (!el) return;
+  try {
+    const projects = await api('GET', '/clients');
+    if (!projects.length) return;
+
+    // Fetch each project's calendars to get all concepts
+    const allConcepts = [];
+    await Promise.all(projects.map(async p => {
+      try {
+        const detail = await api('GET', `/clients/${p.id}`);
+        (detail.calendars || []).forEach(cal => {
+          (cal.concepts || []).forEach(c => allConcepts.push(c));
+        });
+      } catch(e) {}
+    }));
+
+    if (!allConcepts.length) return;
+    const aggStats = computeConceptStats(allConcepts);
+
+    // Per-project breakdown
+    const perProject = await Promise.all(projects.map(async p => {
+      try {
+        const detail = await api('GET', `/clients/${p.id}`);
+        const concepts = (detail.calendars || []).flatMap(cal => cal.concepts || []);
+        return { name: p.name, emoji: p.emoji || '🚀', color: p.color || '#667eea',
+                 stats: computeConceptStats(concepts) };
+      } catch(e) { return null; }
+    }));
+
+    el.innerHTML = `
+      ${renderStatsBanner(aggStats, 'All Projects — Aggregate Execution')}
+      <div class="per-project-stats">
+        ${perProject.filter(Boolean).map(pp => `
+          <div class="pps-row">
+            <div class="pps-name">
+              <span>${pp.emoji}</span>
+              <span>${esc(pp.name)}</span>
+            </div>
+            <div class="pps-bar-wrap">
+              <div class="exec-stats-bar" style="height:8px;border-radius:4px;">
+                ${pp.stats.pctSuccess ? `<div class="esb-seg esb-success" style="width:${pp.stats.pctSuccess}%"></div>` : ''}
+                ${pp.stats.pctDelayed ? `<div class="esb-seg esb-delayed" style="width:${pp.stats.pctDelayed}%"></div>` : ''}
+                ${pp.stats.pctFailed  ? `<div class="esb-seg esb-failed"  style="width:${pp.stats.pctFailed}%"></div>`  : ''}
+                ${pp.stats.pctPending ? `<div class="esb-seg esb-pending" style="width:${pp.stats.pctPending}%"></div>` : ''}
+              </div>
+            </div>
+            <div class="pps-nums">
+              <span style="color:#10b981;">${pp.stats.pctSuccess}%</span>
+              <span style="color:#f59e0b;">${pp.stats.pctDelayed}%</span>
+              <span style="color:#ef4444;">${pp.stats.pctFailed}%</span>
+              <span style="color:#9ca3af;">${pp.stats.pctPending}%</span>
+            </div>
+          </div>`).join('')}
+      </div>`;
+  } catch(e) { console.error('loadAllProjectsStats', e); }
+}
+
 function renderGlobalCharts() {
   const ctxType = document.getElementById('contentTypeChart');
   const ctxEng  = document.getElementById('engagementTrendChart');
@@ -2701,9 +2878,9 @@ async function loadWorkspaceSettings() {
     const d = await api('GET', '/admin/settings');
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
     set('ws-app-name', d.app_name);
-    set('ws-guest-login', d.allow_guest_login === '0' ? '0' : '1');
     set('ws-google-id', d.google_client_id);
     set('ws-google-secret', d.google_client_secret);
+    // Admin password intentionally not pre-filled for security
   } catch(e) {}
 }
 
@@ -2711,12 +2888,14 @@ async function saveWorkspaceSettings() {
   const msg = document.getElementById('ws-msg');
   const get = id => (document.getElementById(id) || {}).value || '';
   try {
-    await api('POST', '/admin/settings', {
+    const payload = {
       app_name: get('ws-app-name'),
-      allow_guest_login: get('ws-guest-login'),
       google_client_id: get('ws-google-id'),
       google_client_secret: get('ws-google-secret'),
-    });
+    };
+    const adminPw = get('ws-admin-password');
+    if (adminPw) payload.admin_password = adminPw;
+    await api('POST', '/admin/settings', payload);
     msg.className = 'api-msg success';
     msg.innerHTML = '<i class="fas fa-check-circle"></i> Workspace settings saved!';
     toast('Workspace saved', 'success');
@@ -2773,7 +2952,7 @@ async function saveMyPassword() {
 }
 
 // Team users
-const ROLE_OPTIONS = ['admin','manager','executive','worker'];
+const ROLE_OPTIONS = ['admin','manager','va'];
 async function loadTeamUsers() {
   const wrap = document.getElementById('team-users-table');
   if (!wrap) return;
@@ -2901,12 +3080,225 @@ function openProjectWizard() {
   if (aiInput) aiInput.value = '';
   const aiResult = document.getElementById('ai-extract-result');
   if (aiResult) { aiResult.style.display = 'none'; aiResult.innerHTML = ''; }
-  renderWizardStep(0);
+  // Clear any previous scan
+  window._wizScanResult = null;
+  // Show website URL step FIRST (new step 0)
+  _showWizardURLStep();
   openModal('wizardModal');
+}
+
+// Show the website URL scanner as the very first wizard step
+function _showWizardURLStep() {
+  document.querySelectorAll('.wizard-ai-step, .wizard-step').forEach(el => el.classList.remove('active'));
+  const formHeader = document.getElementById('wizard-form-header');
+  const footer     = document.getElementById('wizard-footer');
+  if (formHeader) formHeader.style.display = 'none';
+  if (footer)     footer.style.display     = 'none';
+  document.getElementById('wstep-url').classList.add('active');
+  // Reset URL step UI
+  ['wiz-project-name','wiz-website-url','wiz-competitor-url','wiz-instagram-url','wiz-tiktok-url'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const inputWrap = document.getElementById('wiz-url-input-wrap');
+  const scanProg  = document.getElementById('wiz-scan-progress');
+  if (inputWrap) inputWrap.style.display = '';
+  if (scanProg)  scanProg.style.display  = 'none';
+}
+
+// Move from URL step → "Tell AI About Your Project" step
+function showWstepAI() {
+  document.getElementById('wstep-url').classList.remove('active');
+  // Reset AI stages
+  const stageA = document.getElementById('ai-stage-a');
+  const stageB = document.getElementById('ai-stage-b');
+  if (stageA) stageA.style.display = '';
+  if (stageB) stageB.style.display = 'none';
+  // Pre-fill form fields now so "Fill manually" also shows scanned data
+  prefillWizardForms();
+  renderWizardStep(0);
+}
+
+// Scan website from wizard URL step
+async function wizScanWebsite() {
+  const nameInput  = document.getElementById('wiz-project-name');
+  const urlInput   = document.getElementById('wiz-website-url');
+  const compInput  = document.getElementById('wiz-competitor-url');
+  const igInput    = document.getElementById('wiz-instagram-url');
+  const ttInput    = document.getElementById('wiz-tiktok-url');
+
+  const projectName = (nameInput?.value || '').trim();
+  let url     = (urlInput?.value  || '').trim();
+  let compUrl = (compInput?.value || '').trim();
+  let igUrl   = (igInput?.value   || '').trim();
+  let ttUrl   = (ttInput?.value   || '').trim();
+
+  if (!url) { toast('Enter your website URL first', 'error'); urlInput?.focus(); return; }
+  if (!url.startsWith('http'))     url     = 'https://' + url;
+  if (compUrl && !compUrl.startsWith('http')) compUrl = 'https://' + compUrl;
+  if (igUrl   && !igUrl.startsWith('http'))   igUrl   = 'https://' + igUrl;
+  if (ttUrl   && !ttUrl.startsWith('http'))   ttUrl   = 'https://' + ttUrl;
+
+  const inputWrap = document.getElementById('wiz-url-input-wrap');
+  const scanProg  = document.getElementById('wiz-scan-progress');
+  inputWrap.style.display = 'none';
+  scanProg.style.display  = 'block';
+
+  const fill = document.getElementById('wiz-scan-fill');
+  const text = document.getElementById('wiz-scan-text');
+  const sub  = document.getElementById('wiz-scan-sub');
+
+  const hasComp = !!compUrl;
+  const hasSocial = !!(igUrl || ttUrl);
+  const steps = [
+    [10, 'Scanning your website…',              '🌐 Reading your homepage & about page'],
+    ...(hasComp ? [[24, 'Scanning competitor…', '🎯 Analysing their positioning']] : []),
+    ...(igUrl   ? [[hasSocial && ttUrl ? 40 : 50, 'Scanning Instagram…', '📸 Reverse-engineering reel types']] : []),
+    ...(ttUrl   ? [[55, 'Scanning TikTok…',     '🎵 Mapping video content formats']] : []),
+    [70, 'Identifying niche & audience…',       '📊 Extracting business type & audience'],
+    [85, 'Building content strategy…',          '✨ Crafting your content blueprint'],
+    [93, 'Finalising your profile…',            ''],
+  ];
+
+  let si = 0;
+  const timer = setInterval(() => {
+    if (si < steps.length) {
+      fill.style.width = steps[si][0] + '%';
+      text.textContent = steps[si][1];
+      if (sub) sub.textContent = steps[si][2] || '';
+      si++;
+    }
+  }, 1400);
+
+  try {
+    // Scan all URLs in parallel
+    const promises = [api('POST', '/scan-website', { url })];
+    if (hasComp)  promises.push(api('POST', '/scan-website',  { url: compUrl }));
+    if (igUrl)    promises.push(api('POST', '/scan-social', { url: igUrl,  platform: 'instagram' }));
+    if (ttUrl)    promises.push(api('POST', '/scan-social', { url: ttUrl,  platform: 'tiktok'    }));
+    const [result, compResult, igResult, ttResult] = await Promise.all(promises);
+
+    clearInterval(timer);
+    fill.style.width = '100%';
+    text.textContent = hasComp
+      ? `✅ Analysed your site + competitor!`
+      : result.inferred
+        ? `✅ Profile built for ${result.business_name || 'your business'} (AI inferred)`
+        : `✅ Found: ${result.business_name || 'your business'}!`;
+    if (sub) sub.textContent = '';
+
+    window._wizScanResult = result;
+    window._wizCompResult = compResult || null;
+
+    // Populate wizardData — user-entered name wins over scanned
+    const d = state.wizardData;
+    d.name = projectName || result.business_name || d.name;
+
+    if (result.niche)                d.niche                = result.niche;
+    if (result.business_type)        d.business_type        = result.business_type;
+    if (result.tone_of_voice)        d.tone_of_voice        = result.tone_of_voice;
+    if (result.unique_selling_point) d.unique_selling_point = result.unique_selling_point;
+    if (result.target_age)           d.target_age           = result.target_age;
+    if (result.target_interests)     d.target_interests     = result.target_interests;
+    if (result.target_pain_points)   d.target_pain_points   = result.target_pain_points;
+    if (result.about_summary)        d.about_summary        = result.about_summary;
+    if (result.emoji)                d.emoji                = result.emoji;
+    if (result.color)                d.color                = result.color;
+    if (result.url)                  d.website_url          = result.url;
+    if (result.success_goal)         d.success_goal         = result.success_goal;
+    if (result.solutions && result.solutions.length) {
+      wizardSolutions.length = 0;
+      result.solutions.slice(0, 3).forEach(s => wizardSolutions.push(s));
+      renderSolutions();
+      d.solutions = [...wizardSolutions];
+    }
+
+    // Enrich with competitor intelligence
+    if (compResult) {
+      let compName = compResult.business_name || '';
+      try { if (!compName) compName = new URL(compUrl).hostname; } catch(_) { compName = compUrl; }
+      d.competitor_handles = [
+        compName,
+        compResult.niche || '',
+        compResult.unique_selling_point || '',
+      ].filter(Boolean).join(' — ');
+      // Append competitive insight to about_summary for richer AI generation
+      if (compResult.niche || compResult.business_name) {
+        const gap = result.unique_selling_point
+          ? `Our key differentiator: ${result.unique_selling_point}.`
+          : 'Focus on unique strengths.';
+        d.about_summary = (d.about_summary || '') +
+          ` Main competitor: ${compName}${compResult.niche ? ' ('+compResult.niche+')' : ''}. ${gap}`;
+      }
+    }
+
+    // Merge social intelligence (Instagram + TikTok)
+    const socialResults = [igResult, ttResult].filter(Boolean);
+    if (socialResults.length) {
+      const allReelTypes    = socialResults.flatMap(r => r.reel_types    || []);
+      const allHookStyles   = socialResults.flatMap(r => r.hook_styles   || []);
+      const allPillars      = socialResults.flatMap(r => r.content_pillars || []);
+      const postingStyle    = socialResults.map(r => r.posting_style).filter(Boolean).join(' | ');
+      const handles         = socialResults.map(r => r.handle).filter(Boolean).join(', ');
+
+      if (handles)        d.social_handles    = handles;
+      if (postingStyle)   d.posting_style     = postingStyle;
+      if (allPillars.length) d.content_pillars = [...new Set(allPillars)].slice(0, 5).join(', ');
+
+      // Social reel types replace/enrich solutions
+      if (allReelTypes.length) {
+        wizardSolutions.length = 0;
+        [...new Set(allReelTypes)].slice(0, 5).forEach(s => wizardSolutions.push(s));
+        renderSolutions();
+        d.solutions = [...wizardSolutions];
+      }
+
+      // Append social intelligence to about_summary
+      const socialLine = [
+        handles       ? `Social: ${handles}.`      : '',
+        postingStyle  ? `Content style: ${postingStyle}.` : '',
+        allHookStyles.length ? `Hook formats: ${[...new Set(allHookStyles)].slice(0,3).join(', ')}.` : '',
+      ].filter(Boolean).join(' ');
+      if (socialLine) d.about_summary = (d.about_summary || '') + ' ' + socialLine;
+    }
+
+    // Pre-populate the AI describe textarea with full context
+    const textarea = document.getElementById('ai-describe-input');
+    if (textarea) {
+      const parts = [
+        d.name ? `I run ${d.name}.` : '',
+        result.about_summary || '',
+        result.niche ? `It's a ${result.niche}.` : '',
+        result.target_age && result.target_interests
+          ? `Target audience: ${result.target_age} year olds interested in ${result.target_interests}.` : '',
+        result.unique_selling_point ? `Our USP: ${result.unique_selling_point}` : '',
+        compResult
+          ? `Main competitor: ${compResult.business_name || compUrl}${compResult.niche ? ' — '+compResult.niche : ''}.` : '',
+        d.social_handles ? `Social presence: ${d.social_handles}.` : '',
+      ].filter(Boolean);
+      if (parts.length) textarea.value = parts.join(' ');
+    }
+
+    await new Promise(r => setTimeout(r, 800));
+    scanProg.style.display  = 'none';
+    inputWrap.style.display = '';
+    showWstepAI();
+
+  } catch(e) {
+    clearInterval(timer);
+    scanProg.style.display  = 'none';
+    inputWrap.style.display = '';
+    // Never show a raw error — just let the user proceed manually
+    toast('Could not reach the website — continuing with manual setup', 'info');
+    showWstepAI();
+  }
 }
 
 function renderWizardStep(step) {
   const isAI = step === 0;
+
+  // Always hide URL scanner step when moving to any other step
+  const urlStep = document.getElementById('wstep-url');
+  if (urlStep) urlStep.classList.remove('active');
 
   // AI pre-step visibility
   const aiStep = document.getElementById('wstep-ai');
@@ -3090,6 +3482,12 @@ function prefillWizardForms() {
   set('w-usp', d.unique_selling_point);
   set('w-competitors', d.competitor_handles);
   set('w-brand-colors', d.brand_colors);
+  // Step 3 — solutions chips
+  if (d.solutions && d.solutions.length) {
+    wizardSolutions.length = 0;
+    d.solutions.forEach(s => wizardSolutions.push(s));
+    renderSolutions();
+  }
   // Step 4
   set('w-tone', d.tone_of_voice);
   set('w-campaign-days', d.campaign_days);
@@ -3469,17 +3867,207 @@ function closeTeamSuggest() {
 // ── Generate Calendar Modal ────────────────────────────────────────────────
 function openGenerateModal(preGridId) {
   if (!can('generate')) { toast('Your role cannot generate campaigns', 'error'); return; }
-  // Pre-select current project
-  const sel = document.getElementById('gen-client-select');
-  if (sel && state.currentProjectId) sel.value = state.currentProjectId;
+  if (!state.currentProjectId || !state.currentProject) {
+    toast('Open a project first', 'error'); return;
+  }
 
-  // Clear grid banner (campaign grid uses its own flow)
+  const dateInput   = document.getElementById('gen-start-date');
+  const daysInput   = document.getElementById('gen-campaign-days');
   const hiddenInput = document.getElementById('gen-grid-id');
   const banner      = document.getElementById('gen-grid-banner');
-  if (hiddenInput) hiddenInput.value = '';
-  if (banner) banner.style.display = 'none';
+
+  // Auto-fill start date → today IST
+  if (dateInput) {
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    dateInput.value = todayStr;
+  }
+
+  // Ensure days has a value
+  if (daysInput && !daysInput.value) daysInput.value = '30';
+
+  // Grid banner
+  if (hiddenInput) hiddenInput.value = preGridId || '';
+  if (banner) banner.style.display = preGridId ? 'flex' : 'none';
+
+  // Skip scanner — go straight to approval card using current project's data
+  _renderGenApproval(window._lastScan || null);
 
   openModal('generateModal');
+}
+
+// Show the optional website scanner step
+function _showGenScanner() {
+  const _hide = ids => ids.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  _hide(['gen-approval-wrap','gen-scanning-wrap','gen-form']);
+  const scanWrap = document.getElementById('gen-scanner-wrap');
+  if (scanWrap) scanWrap.style.display = 'block';
+  // Restore hero text
+  const heroTitle = document.getElementById('gen-hero-title');
+  const heroSub   = document.getElementById('gen-hero-sub');
+  if (heroTitle) heroTitle.textContent = 'Generate AI Campaign';
+  if (heroSub)   heroSub.textContent   = 'Scan your website to auto-fill everything — or skip straight in';
+}
+
+// Scan the user's website and extract business profile
+async function scanWebsite() {
+  const urlInput  = document.getElementById('gen-website-url');
+  let url = (urlInput?.value || '').trim();
+  if (!url) { toast('Enter your website URL first', 'error'); urlInput?.focus(); return; }
+  if (!url.startsWith('http')) url = 'https://' + url;
+
+  // Show scanning progress
+  document.getElementById('gen-scanner-wrap').style.display   = 'none';
+  const scanningWrap = document.getElementById('gen-scanning-wrap');
+  scanningWrap.style.display = 'block';
+
+  const scanText = document.getElementById('gen-scanning-text');
+  const scanFill = document.getElementById('gen-scan-fill');
+
+  const steps = [
+    [12, 'Fetching your website…'],
+    [30, 'Reading page content…'],
+    [52, 'Identifying business type…'],
+    [68, 'Extracting audience profile…'],
+    [82, 'Analysing brand voice & tone…'],
+    [90, 'Finalising profile…'],
+  ];
+  let si = 0;
+  const stepTimer = setInterval(() => {
+    if (si < steps.length) { scanFill.style.width = steps[si][0] + '%'; scanText.textContent = steps[si][1]; si++; }
+  }, 1400);
+
+  try {
+    const result = await api('POST', '/scan-website', { url });
+    clearInterval(stepTimer);
+    scanFill.style.width = '100%';
+    scanText.textContent = `✅ Scanned — found ${result.business_name || 'your business'}!`;
+
+    // Cache scan for this session
+    window._lastScan = result;
+
+    // Silently update the current project with enriched data
+    if (state.currentProjectId && result.scanned) {
+      const patch = {};
+      if (result.niche)              patch.niche              = result.niche;
+      if (result.business_type)      patch.business_type      = result.business_type;
+      if (result.target_age)         patch.target_age         = result.target_age;
+      if (result.target_interests)   patch.target_interests   = result.target_interests;
+      if (result.target_pain_points) patch.target_pain_points = result.target_pain_points;
+      if (result.tone_of_voice)      patch.tone_of_voice      = result.tone_of_voice;
+      if (result.unique_selling_point) patch.unique_selling_point = result.unique_selling_point;
+      if (result.about_summary)      patch.about_summary      = result.about_summary;
+      if (result.emoji)              patch.emoji              = result.emoji;
+      if (result.color)              patch.color              = result.color;
+      if (result.url)                patch.website_url        = result.url;
+      try { await api('PUT', `/clients/${state.currentProjectId}`, patch); } catch(_) {}
+    }
+
+    await new Promise(r => setTimeout(r, 800));
+    scanningWrap.style.display = 'none';
+    _renderGenApproval(result);
+
+  } catch(e) {
+    clearInterval(stepTimer);
+    scanningWrap.style.display = 'none';
+    document.getElementById('gen-scanner-wrap').style.display = 'block';
+    toast('Scan failed: ' + (e.message || 'Could not reach website'), 'error');
+  }
+}
+
+// Render the approval summary card using current project's saved data
+function _renderGenApproval(scanData) {
+  const scan      = scanData || window._lastScan || null;
+  const p         = state.currentProject || {};
+  const dateInput = document.getElementById('gen-start-date');
+  const daysInput = document.getElementById('gen-campaign-days');
+  const form      = document.getElementById('gen-form');
+  const wrap      = document.getElementById('gen-approval-wrap');
+
+  // Hide scanner views
+  ['gen-scanner-wrap','gen-scanning-wrap'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+
+  if (!wrap) { _showGenForm(); return; }
+
+  // Always use the currently open project name
+  const projName = p.name || '—';
+
+  const days    = parseInt(daysInput?.value) || 30;
+  const dateVal = dateInput?.value || '';
+
+  let dateStr = '—', durationStr = `${days} days`;
+  if (dateVal) {
+    const [yr, mo, dy] = dateVal.split('-').map(Number);
+    const start = new Date(yr, mo - 1, dy);
+    dateStr = start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    const end = new Date(yr, mo - 1, dy + days - 1);
+    durationStr = `${days} days  ·  ends ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  }
+
+  const gridsCount = Object.keys(_cgGrids || {}).length || 3;
+  const outputStr  = `~${days * gridsCount} concepts  ·  ${gridsCount} posts/day`;
+
+  const E = id => document.getElementById(id);
+  const setText = (id, val) => { const el = E(id); if (el) el.textContent = val; };
+  const showRow = (rowId, divId, val) => {
+    if (!val) return;
+    const row = E(rowId), div = E(divId);
+    if (row) row.style.display = 'flex';
+    if (div) div.style.display = 'block';
+  };
+
+  setText('gen-ap-project',  projName);
+  setText('gen-ap-date',     dateStr);
+  setText('gen-ap-duration', durationStr);
+  setText('gen-ap-output',   outputStr);
+
+  // Show project's existing profile data (scan enrichment takes priority if present)
+  const nicheStr    = [scan?.niche || p.niche, scan?.business_type || p.business_type].filter(Boolean).join(' · ');
+  const audienceStr = [
+    scan?.target_age || p.target_age,
+    ((scan?.target_interests || p.target_interests || '').split(',')[0] || '').trim()
+  ].filter(Boolean).join(' · ');
+  const toneStr = scan?.tone_of_voice || p.tone_of_voice || '';
+
+  if (nicheStr)    { setText('gen-ap-niche',    nicheStr);    showRow('gen-ap-niche-row',    'gen-ap-niche-div',    nicheStr); }
+  if (audienceStr) { setText('gen-ap-audience', audienceStr); showRow('gen-ap-audience-row', 'gen-ap-audience-div', audienceStr); }
+  if (toneStr)     { setText('gen-ap-tone',     toneStr);     showRow('gen-ap-tone-row',     'gen-ap-tone-div',     toneStr); }
+
+  // Hero text
+  const heroTitle = document.getElementById('gen-hero-title');
+  const heroSub   = document.getElementById('gen-hero-sub');
+  if (heroTitle) heroTitle.textContent = `Ready — ${p.name || 'Your Project'}`;
+  if (heroSub)   heroSub.textContent   = 'Confirm your settings and generate the campaign.';
+
+  wrap.style.display = 'block';
+  if (form) form.style.display = 'none';
+}
+
+// Switch back to the editable form view
+function _showGenForm() {
+  ['gen-scanner-wrap','gen-scanning-wrap','gen-approval-wrap'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  const form = document.getElementById('gen-form');
+  if (form) form.style.display = '';
+  const heroTitle = document.getElementById('gen-hero-title');
+  const heroSub   = document.getElementById('gen-hero-sub');
+  if (heroTitle) heroTitle.textContent = 'Generate AI Campaign';
+  if (heroSub)   heroSub.textContent   = 'AI builds your full content calendar in ~30 seconds';
+}
+
+// Submit the hidden form from the approval button
+function submitGenApproval() {
+  const form = document.getElementById('gen-form');
+  if (!form) return;
+  // Ensure form is in DOM even if hidden, then programmatically submit
+  try {
+    form.requestSubmit();
+  } catch(e) {
+    // Fallback for older Safari
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  }
 }
 
 // ── Reset Campaign ────────────────────────────────────────────────────────────
@@ -3536,8 +4124,8 @@ function showConfirmDialog(title, bodyHtml, okLabel, cancelLabel) {
 
 async function generateCalendar(event) {
   event.preventDefault();
-  const clientId = document.getElementById('gen-client-select').value;
-  if (!clientId) { toast('Select a project first', 'error'); return; }
+  const clientId = state.currentProjectId;
+  if (!clientId) { toast('Open a project first', 'error'); return; }
 
   const goalType  = 'campaign';
   const startDate = document.getElementById('gen-start-date').value;
@@ -3599,6 +4187,10 @@ async function generateCalendar(event) {
       form.style.display    = '';
       progress.style.display= 'none';
       fill.style.width      = '0%';
+      // Reset modal views
+      ['gen-approval-wrap','gen-scanning-wrap','gen-scanner-wrap'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = 'none';
+      });
 
       await loadSidebar();
       if (clientId !== state.currentProjectId) {
@@ -3619,6 +4211,9 @@ async function generateCalendar(event) {
     form.style.display    = '';
     progress.style.display= 'none';
     fill.style.width      = '0%';
+    ['gen-approval-wrap','gen-scanning-wrap','gen-scanner-wrap'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
     toast(e.message || 'Generation failed', 'error');
   }
 }
@@ -3756,7 +4351,7 @@ async function saveProjectSettings() {
 
 // ── Delete Project ────────────────────────────────────────────────────────
 async function confirmDeleteProject() {
-  if (!can('deleteContent')) { toast('Only Admins can delete projects', 'error'); return; }
+  if (!can('deleteProject')) { toast('Only Admins and Managers can delete projects', 'error'); return; }
   const name = (document.getElementById('project-name-header') || {}).textContent || 'this project';
   const ok = confirm(`Delete "${name}"?\n\nThis will permanently remove the project and all 30 days of content. This cannot be undone.`);
   if (!ok) return;
@@ -4258,7 +4853,7 @@ async function loadCGCalendar(calId) {
       `<div class="cg-empty-state" id="cg-empty-state">
         <i class="fas fa-calendar-plus"></i>
         <p>Generate a campaign to see the 3-column grid</p>
-        <button class="btn-primary" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
+        <button class="btn-primary btn-generate" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
       </div>`;
     return;
   }
@@ -4271,9 +4866,9 @@ async function loadCGCalendar(calId) {
     state.currentCalendarData = data;
     _cgDays = data.campaign_days || 30;
 
-    // Parse start date from calendar month
+    // Use stored start_date if available; fall back to month + '-01'
     const m = data.month || '';
-    _cgStartDate = m.length === 7 ? m + '-01' : m;
+    _cgStartDate = data.start_date || (m.length === 7 ? m + '-01' : m) || new Date().toISOString().slice(0,10);
 
     // Load grid configs FIRST — we need _cgGrids to be up-to-date before building the concept map
     await loadCGGrids(calId);
@@ -4328,7 +4923,7 @@ function renderCGTable() {
     outer.innerHTML = `<div class="cg-empty-state" id="cg-empty-state">
       <i class="fas fa-calendar-plus"></i>
       <p>Generate a campaign to see the 3-column grid</p>
-      <button class="btn-primary" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
+      <button class="btn-primary btn-generate" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
     </div>`;
     return;
   }
@@ -4485,6 +5080,16 @@ async function openCGPanel(day, gi) {
   _cgPanel.offerPickSet = new Set();
   _cgPanel.bulkOffers = [];
 
+  // ── If this cell already has saved content, jump straight to Step 3 ──────
+  const existing = _cgConcepts[`${day}-${gi}`];
+  if (existing && existing.creative_data && Object.keys(existing.creative_data).length > 0) {
+    panel.classList.add('open');
+    _cgPanel.step = 3;
+    _cgPanel.lastResult = { concept: existing, formats_content: existing.creative_data };
+    _renderCGStep3(_cgPanel.lastResult);
+    return;
+  }
+
   panel.classList.add('open');
   _renderCGStep1Loading('Loading offer pool…');
 
@@ -4507,7 +5112,16 @@ async function openCGPanel(day, gi) {
       _renderCGStep1Pick(false);
     }
   } catch(e) {
-    _renderCGStep1Loading('Could not load — close and try again.');
+    const msg = e.message || '';
+    const isApiKey = msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('anthropic');
+    if (isApiKey) {
+      _renderCGStep1Loading(
+        '⚠️ Anthropic API key not set.<br>' +
+        '<small style="color:var(--text-muted);">Go to <strong>Settings → Integrations</strong> and enter your Anthropic API key to use AI features.</small>'
+      );
+    } else {
+      _renderCGStep1Loading('Could not load — ' + (msg || 'close and try again.'));
+    }
   }
 }
 
@@ -4551,14 +5165,20 @@ function _cgPanelHeader(stepNum) {
 
 // ── Step 1: Offer Pool ─────────────────────────────────────────────────
 
-function _renderCGStep1Loading(msg) {
+function _renderCGStep1Loading(msg, isError) {
   const body = document.getElementById('cg-panel-body');
   if (!body) return;
+  const isErr = isError || (msg && (msg.includes('⚠️') || msg.includes('Could not')));
   body.innerHTML = `
     ${_cgPanelHeader(1)}
-    <div style="text-align:center;padding:48px 0;color:var(--text-secondary);">
-      <i class="fas fa-spinner fa-spin" style="font-size:22px;margin-bottom:12px;display:block;"></i>
-      <div style="font-size:13px;">${esc(msg || 'Loading…')}</div>
+    <div style="text-align:center;padding:48px 24px;color:var(--text-secondary);">
+      ${isErr
+        ? `<i class="fas fa-exclamation-circle" style="font-size:28px;margin-bottom:14px;display:block;color:#f59e0b;"></i>`
+        : `<i class="fas fa-spinner fa-spin" style="font-size:22px;margin-bottom:12px;display:block;"></i>`}
+      <div style="font-size:13px;line-height:1.6;">${msg || 'Loading…'}</div>
+      ${isErr ? `<button onclick="openGlobalView('settings')" class="btn-primary btn-sm" style="margin-top:16px;">
+        <i class="fas fa-cog"></i> Open Settings
+      </button>` : ''}
     </div>`;
 }
 
@@ -4875,7 +5495,11 @@ async function _cgGenerate() {
         timing: slot ? slot.timing : 'AM',
         confirmed_offer: _cgPanel.offerText, formats
       });
-      if (res.concept) { _cgConcepts[`${_cgPanel.day}-${_cgPanel.gi}`] = res.concept; renderCGTable(); }
+      if (res.concept) {
+        res.concept.creative_data = res.formats_content || {};
+        _cgConcepts[`${_cgPanel.day}-${_cgPanel.gi}`] = res.concept;
+        renderCGTable();
+      }
       _cgPanel.lastResult = res;
       _cgPanel.step = 3;
       _renderCGStep3(res);
@@ -5040,11 +5664,12 @@ function _buildCopyAllText(fk, data) {
     lines.push('BRAND: Business name/logo in top corner on every slide');
   } else if (fk === 'video_heygen') {
     if (data.hook) lines.push('HOOK: ' + data.hook);
-    lines.push('DURATION: ' + (data.duration_seconds||45) + 's');
-    (data.scenes||[]).forEach(s => {
-      lines.push('SCENE ' + s.scene + ' (' + (s.duration_s||'') + 's): ' + (s.script||''));
-      if (s.lower_third) lines.push('  Lower third: ' + s.lower_third);
+    lines.push('DURATION: ' + (data.duration_seconds||18) + 's');
+    const scriptLines = data.lines || (data.scenes||[]).map((s,i)=>({line:i+1,script:s.script,duration_s:s.duration_s}));
+    scriptLines.forEach((s,i) => {
+      lines.push('LINE ' + (s.line||s.scene||i+1) + ' (' + (s.duration_s||3) + 's): ' + (s.script||''));
     });
+    if (data.lower_third)            lines.push('Lower third: ' + data.lower_third);
     if (data.avatar_suggestion)      lines.push('AVATAR: ' + data.avatar_suggestion);
     if (data.background_suggestion)  lines.push('BG: ' + data.background_suggestion);
     if (data.cta_text)               lines.push('CTA: ' + data.cta_text);
@@ -5114,19 +5739,21 @@ function _buildFormatBlock(fk, data) {
       ${data.canva_tip ? `<div class="cg-content-row"><span class="cg-content-lbl">🎨 Canva</span><span>${esc(data.canva_tip)}</span>${_copyIcon(data.canva_tip)}</div>` : ''}
       <div class="cg-content-row" style="background:#f59e0b10;border-radius:6px;padding:5px 8px;"><span class="cg-content-lbl" style="color:#f59e0b;">🏷 Brand</span><span style="font-size:11px;">Business name/logo in <strong>top corner</strong> of the image</span></div>`;
   } else if (fk === 'video_heygen') {
-    const scenes = (data.scenes || []).map(s =>
-      `<div class="cg-content-slide">
-        <span class="cg-slide-num">Scene ${s.scene} · ${s.duration_s||''}s</span>
-        <div style="font-size:12px;line-height:1.5;">${esc(s.script||'')} ${_copyIcon(s.script||'')}</div>
-        ${s.lower_third ? `<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">Lower third: ${esc(s.lower_third)} ${_copyIcon(s.lower_third)}</div>` : ''}
+    // Support new `lines` format + legacy `scenes` fallback
+    const scriptLines = data.lines || (data.scenes||[]).map((s,i)=>({line:i+1,script:s.script,duration_s:s.duration_s,lower_third:s.lower_third}));
+    const linesHtml = scriptLines.map((s,i) =>
+      `<div class="cg-content-slide" style="border-left:3px solid #ec4899;padding:8px 10px;margin-bottom:6px;background:#fdf2f8;border-radius:0 6px 6px 0;">
+        <span class="cg-slide-num" style="color:#ec4899;font-weight:700;">Line ${s.line||s.scene||i+1} · ${s.duration_s||3}s</span>
+        <div style="font-size:13px;line-height:1.5;font-weight:500;margin-top:2px;">${esc(s.script||'')} ${_copyIcon(s.script||'')}</div>
       </div>`).join('');
     html = `
-      ${data.hook ? `<div class="cg-content-row"><span class="cg-content-lbl">Hook</span><span>${esc(data.hook)}</span>${_copyIcon(data.hook||'')}</div>` : ''}
-      <div class="cg-content-row"><span class="cg-content-lbl">Duration</span><span>${data.duration_seconds||45}s</span></div>
-      ${scenes}
+      ${data.hook ? `<div class="cg-content-row"><span class="cg-content-lbl">Hook</span><span style="font-weight:600;">${esc(data.hook)}</span>${_copyIcon(data.hook||'')}</div>` : ''}
+      <div class="cg-content-row"><span class="cg-content-lbl">Duration</span><span>${data.duration_seconds||18}s · 6 lines</span></div>
+      <div style="margin:8px 0;">${linesHtml}</div>
+      ${data.lower_third ? `<div class="cg-content-row"><span class="cg-content-lbl">📺 Lower third</span><span>${esc(data.lower_third)}</span>${_copyIcon(data.lower_third)}</div>` : ''}
       ${data.avatar_suggestion ? `<div class="cg-content-row"><span class="cg-content-lbl">🤖 Avatar</span><span>${esc(data.avatar_suggestion)}</span>${_copyIcon(data.avatar_suggestion)}</div>` : ''}
       ${data.background_suggestion ? `<div class="cg-content-row"><span class="cg-content-lbl">🖼 BG</span><span>${esc(data.background_suggestion)}</span>${_copyIcon(data.background_suggestion)}</div>` : ''}
-      ${data.cta_text ? `<div class="cg-content-row"><span class="cg-content-lbl">CTA</span><span>${esc(data.cta_text)}</span>${_copyIcon(data.cta_text)}</div>` : ''}
+      ${data.cta_text ? `<div class="cg-content-row" style="background:#10b98108;border-radius:6px;padding:6px 8px;"><span class="cg-content-lbl" style="color:#10b981;">📣 CTA</span><span style="font-weight:600;">${esc(data.cta_text)}</span>${_copyIcon(data.cta_text)}</div>` : ''}
       <div class="cg-content-row" style="background:#f59e0b10;border-radius:6px;padding:5px 8px;"><span class="cg-content-lbl" style="color:#f59e0b;">🏷 Brand</span><span style="font-size:11px;">Business name/logo as <strong>persistent corner watermark</strong> throughout video</span></div>`;
   } else if (fk === 'video_canva') {
     const frames = (data.frames || []).map(f =>
@@ -5192,12 +5819,34 @@ async function regenerateCGFormat(fk) {
 
 async function confirmCGDay() {
   const btn = document.getElementById('cg-confirm-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-check-circle"></i> Added to Calendar!'; btn.style.background = '#10b981'; }
-  // Content is already saved to DB on generation — just show success
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-check-circle"></i> Saved to Calendar!'; btn.style.background = '#10b981'; }
+  // Reload full calendar data so Board / List / Calendar views see the new concept
+  try {
+    if (_cgCalendarId) {
+      const fresh = await api('GET', `/calendars/${_cgCalendarId}`);
+      // Rebuild concept map with updated creative_data
+      (fresh.concepts || []).forEach(c => {
+        let gi = _cgGrids.findIndex(g => g.name === (c.grid_slot_type || ''));
+        if (gi < 0 && c.grid_index != null) gi = c.grid_index;
+        if (gi < 0) return;
+        _cgConcepts[`${c.day}-${gi}`] = c;
+      });
+      // Merge into project state so other views pick it up
+      if (state.currentProject) {
+        const calIdx = (state.currentProject.calendars || []).findIndex(cl => cl.id === _cgCalendarId);
+        if (calIdx >= 0) state.currentProject.calendars[calIdx] = fresh;
+        else if (!state.currentProject.calendars) state.currentProject.calendars = [fresh];
+        // Refresh board / list / calendar views if currently visible
+        if (typeof renderKanban === 'function') renderKanban();
+        if (typeof renderListView === 'function') renderListView();
+      }
+      renderCGTable();
+    }
+  } catch(e) { /* non-blocking */ }
   setTimeout(() => {
     closeCGPanel();
-    toast('Day ' + _cgPanel.day + ' content confirmed in calendar ✓', 'success');
-  }, 900);
+    toast('Day ' + _cgPanel.day + ' content saved to calendar ✓', 'success');
+  }, 600);
 }
 
 async function regenerateCGDay(day, gi) {
@@ -5303,7 +5952,7 @@ async function loadGridDashboard() {
     if (outer) outer.innerHTML = `<div class="cg-empty-state">
       <i class="fas fa-calendar-plus"></i>
       <p>No campaigns yet. Generate your first one!</p>
-      <button class="btn-primary" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
+      <button class="btn-primary btn-generate" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
     </div>`;
   }
 }

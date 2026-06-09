@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ContentFlow — AI Content Calendar</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=32">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=39">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -76,13 +76,16 @@
 
   <!-- ── Home / Empty state ─────────────────────────────────────────────── -->
   <div id="view-home" class="view active">
-    <div class="empty-state">
-      <div class="empty-icon"><i class="fas fa-bolt"></i></div>
-      <h2>Welcome to ContentFlow</h2>
-      <p>Your AI-powered content calendar & team workspace.<br>Create your first project to get started.</p>
-      <button class="btn-primary btn-lg" onclick="openProjectWizard()">
-        <i class="fas fa-plus"></i> Create First Project
-      </button>
+    <div id="all-projects-exec-banner" class="home-exec-wrap">
+      <!-- Populated by loadAllProjectsStats() when projects exist -->
+      <div class="empty-state">
+        <div class="empty-icon"><i class="fas fa-bolt"></i></div>
+        <h2>Welcome to ContentFlow</h2>
+        <p>Your AI-powered content calendar &amp; team workspace.<br>Create your first project to get started.</p>
+        <button class="btn-primary btn-lg" onclick="openProjectWizard()">
+          <i class="fas fa-plus"></i> Create First Project
+        </button>
+      </div>
     </div>
   </div>
 
@@ -108,7 +111,7 @@
             <button onclick="openContentStrategy();closeProjectMenu()"><i class="fas fa-lightbulb"></i> Content Strategy</button>
             <button onclick="openGridCalendar();closeProjectMenu()"><i class="fas fa-th"></i> Grid Calendar</button>
             <button onclick="openProjectSettings();closeProjectMenu()"><i class="fas fa-cog"></i> Project Settings</button>
-            <button class="danger admin-only" onclick="confirmDeleteProject();closeProjectMenu()"><i class="fas fa-trash-alt"></i> Delete Project</button>
+            <button class="danger manager-up" onclick="confirmDeleteProject();closeProjectMenu()"><i class="fas fa-trash-alt"></i> Delete Project</button>
           </div>
         </div>
       </div>
@@ -168,7 +171,7 @@
           <div class="cg-empty-state" id="cg-empty-state">
             <i class="fas fa-calendar-plus"></i>
             <p>Generate a campaign to see the 3-column grid</p>
-            <button class="btn-primary" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
+            <button class="btn-primary btn-generate" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
           </div>
         </div>
 
@@ -184,6 +187,8 @@
 
       <!-- ── Stats Strip ── -->
       <div class="gd-stats-strip" id="project-stats-row"></div>
+      <!-- ── Execution stats banner ── -->
+      <div id="project-exec-banner" style="margin:0 0 16px;"></div>
 
       <!-- ── Secondary: Milestones + Calendars + Activity ── -->
       <div class="gd-secondary-row">
@@ -218,6 +223,7 @@
           </select>
         </div>
       </div>
+      <div id="board-stats-banner" style="padding:0 4px 12px;"></div>
       <div class="board-columns" id="board-columns"></div>
     </div>
 
@@ -365,12 +371,10 @@
               <label>App / Workspace Name</label>
               <input type="text" id="ws-app-name" class="form-input" placeholder="ContentFlow">
             </div>
-            <div class="form-group">
-              <label>Allow Guest Login</label>
-              <select id="ws-guest-login" class="form-input">
-                <option value="1">Enabled — anyone can log in as guest</option>
-                <option value="0">Disabled — only invited users</option>
-              </select>
+<div class="form-group">
+              <label>🛡️ Admin Password <span style="font-size:11px;color:var(--text-muted);font-weight:400;">— used for <a href="/admin-login" target="_blank" style="color:var(--primary);">/admin-login</a></span></label>
+              <input type="password" id="ws-admin-password" class="form-input" placeholder="Set a strong admin password">
+              <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Admin can create campaigns, manage all users, and access everything.</p>
             </div>
             <div class="settings-actions">
               <button class="btn-primary" onclick="saveWorkspaceSettings()"><i class="fas fa-save"></i> Save</button>
@@ -595,8 +599,111 @@
   <div class="modal-box modal-wide">
     <button class="modal-close" onclick="closeModal('wizardModal')"><i class="fas fa-times"></i></button>
 
+    <!-- ── STEP 0: AI Business Analyser (shown first) ── -->
+    <div class="wizard-ai-step" id="wstep-url">
+      <div class="ai-prefill-header">
+        <div class="ai-prefill-icon">🔍</div>
+        <h2>AI Business Analyser</h2>
+        <p>Give AI your details — it scans your site, analyses your competition,<br>and builds your entire project profile automatically.</p>
+      </div>
+
+      <!-- 3-field form -->
+      <div id="wiz-url-input-wrap" class="wiz-analyser-form">
+
+        <!-- Project Name -->
+        <div class="wiz-field-group">
+          <label class="wiz-field-label">Project Name <span class="wiz-req">*</span></label>
+          <input type="text" id="wiz-project-name" class="form-input wiz-input-lg"
+                 placeholder="e.g. Destin Bangkok, Venus Studio…"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('wiz-website-url').focus();}">
+        </div>
+
+        <!-- Your Website -->
+        <div class="wiz-field-group">
+          <label class="wiz-field-label">Your Website <span class="wiz-req">*</span></label>
+          <div class="wiz-url-inner">
+            <i class="fas fa-globe wiz-url-pfx" style="color:#6366f1;"></i>
+            <input type="url" id="wiz-website-url" class="form-input wiz-url-field"
+                   placeholder="https://yourwebsite.com"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('wiz-competitor-url').focus();}">
+          </div>
+        </div>
+
+        <!-- Competitor Website -->
+        <div class="wiz-field-group">
+          <label class="wiz-field-label">
+            Competitor Website
+            <span class="wiz-optional-badge">optional</span>
+          </label>
+          <div class="wiz-url-inner">
+            <i class="fas fa-crosshairs wiz-url-pfx" style="color:#ef4444;"></i>
+            <input type="url" id="wiz-competitor-url" class="form-input wiz-url-field"
+                   placeholder="https://topcompetitor.com"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('wiz-instagram-url').focus();}">
+          </div>
+          <p class="wiz-field-hint"><i class="fas fa-info-circle"></i> AI will study their positioning so your content outperforms theirs</p>
+        </div>
+
+        <!-- Social divider -->
+        <div class="wiz-social-divider">
+          <span>Reverse-engineer content strategy</span>
+        </div>
+
+        <!-- Instagram -->
+        <div class="wiz-field-group">
+          <label class="wiz-field-label">
+            Instagram Profile
+            <span class="wiz-optional-badge">optional</span>
+          </label>
+          <div class="wiz-url-inner">
+            <i class="fab fa-instagram wiz-url-pfx" style="color:#e1306c;"></i>
+            <input type="url" id="wiz-instagram-url" class="form-input wiz-url-field"
+                   placeholder="https://instagram.com/yourbrand"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('wiz-tiktok-url').focus();}">
+          </div>
+          <p class="wiz-field-hint"><i class="fas fa-magic"></i> AI reverse-engineers your reel types &amp; duplicates what works</p>
+        </div>
+
+        <!-- TikTok -->
+        <div class="wiz-field-group">
+          <label class="wiz-field-label">
+            TikTok Profile
+            <span class="wiz-optional-badge">optional</span>
+          </label>
+          <div class="wiz-url-inner">
+            <i class="fab fa-tiktok wiz-url-pfx" style="color:#010101;"></i>
+            <input type="url" id="wiz-tiktok-url" class="form-input wiz-url-field"
+                   placeholder="https://tiktok.com/@yourbrand"
+                   autocomplete="off" autocapitalize="off" spellcheck="false"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();wizScanWebsite();}">
+          </div>
+        </div>
+
+        <button class="btn-primary btn-lg wiz-scan-cta" onclick="wizScanWebsite()">
+          <i class="fas fa-search"></i> Analyse &amp; Build My Project
+        </button>
+      </div>
+
+      <!-- Scanning progress (hidden until scan starts) -->
+      <div id="wiz-scan-progress" style="display:none;" class="wiz-scan-progress-wrap">
+        <div class="wiz-scan-anim"><i class="fas fa-search"></i></div>
+        <p class="wiz-scan-text" id="wiz-scan-text">Initialising…</p>
+        <div class="gen-progress-bar" style="margin:16px 0 6px;">
+          <div class="gen-progress-fill" id="wiz-scan-fill" style="width:0%;transition:width .9s ease;"></div>
+        </div>
+        <p class="wiz-scan-sub" id="wiz-scan-sub"></p>
+      </div>
+
+      <div class="ai-prefill-actions" style="margin-top:14px;">
+        <button class="btn-ghost" onclick="showWstepAI()">Skip → I'll describe my business manually</button>
+      </div>
+    </div>
+
     <!-- AI Pre-step (shown before step 1) -->
-    <div class="wizard-ai-step active" id="wstep-ai">
+    <div class="wizard-ai-step" id="wstep-ai">
 
       <!-- ── Stage A: Describe ─────────────────────────────────────── -->
       <div id="ai-stage-a">
@@ -890,7 +997,7 @@
             <div style="flex:1;">
               <input type="text" class="form-input wgrid-name-input" id="wgrid-name-1" value="Growth Content"
                 placeholder="Grid B name…" style="margin-bottom:6px;">
-              <input type="text" class="form-input" id="wgrid-types-1" value="Follower Push, Q&A, Behind the Scenes"
+              <input type="text" class="form-input" id="wgrid-types-1" value="Step By Step Procedure, Blueprint, Dont Do List, Do List"
                 placeholder="Content types (comma separated)…" style="font-size:11px;">
             </div>
             <div class="wgrid-config-focus" id="wgrid-focus-1" style="background:#10b98118;color:#10b981;">
@@ -964,14 +1071,117 @@
 
     <!-- Hero header -->
     <div class="gen-modal-hero">
-      <div class="gen-modal-icon"><i class="fas fa-magic"></i></div>
+      <div class="gen-modal-icon" id="gen-hero-icon"><i class="fas fa-magic"></i></div>
       <div class="gen-modal-hero-text">
-        <h2>Generate AI Campaign</h2>
-        <p>AI builds your full content calendar in ~30 seconds</p>
+        <h2 id="gen-hero-title">Generate AI Campaign</h2>
+        <p id="gen-hero-sub">AI builds your full content calendar in ~30 seconds</p>
       </div>
     </div>
 
     <div class="modal-scroll-body">
+
+      <!-- ── SCANNER VIEW (shown first) ── -->
+      <div id="gen-scanner-wrap" style="display:none; padding: 10px 0 4px;">
+        <div class="gen-scanner-box">
+          <div class="gen-scanner-hint">
+            <i class="fas fa-globe"></i>
+            Paste your website URL — AI will read it and fill in everything for you
+          </div>
+          <div class="gen-scanner-row">
+            <input type="url" id="gen-website-url" class="gen-input gen-url-input"
+                   placeholder="https://yourwebsite.com" autocomplete="off" autocapitalize="off"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();scanWebsite();}">
+            <button class="gen-scan-btn" onclick="scanWebsite()">
+              <i class="fas fa-search"></i> Scan
+            </button>
+          </div>
+        </div>
+        <div class="gen-scanner-skip">
+          <button class="gen-edit-link" onclick="_renderGenApproval()">
+            <i class="fas fa-arrow-right"></i> Skip — use saved project settings
+          </button>
+        </div>
+      </div>
+
+      <!-- ── SCANNING PROGRESS ── -->
+      <div id="gen-scanning-wrap" style="display:none; padding: 30px 4px 16px; text-align:center;">
+        <div class="gen-scanning-icon"><i class="fas fa-globe"></i></div>
+        <p class="gen-scanning-text" id="gen-scanning-text">Fetching website…</p>
+        <div class="gen-progress-bar" style="margin: 18px 0 10px;">
+          <div class="gen-progress-fill" id="gen-scan-fill" style="width:0%;transition:width .8s ease;"></div>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);">Reading your site • Extracting business info • ~10s</p>
+      </div>
+
+      <!-- ── APPROVAL VIEW (shown when auto-filled) ── -->
+      <div id="gen-approval-wrap" style="display:none; padding-top:6px;">
+        <div class="gen-ap-card">
+          <div class="gen-ap-row">
+            <div class="gen-ap-icon-wrap">🚀</div>
+            <div class="gen-ap-info">
+              <div class="gen-ap-label">Project</div>
+              <div class="gen-ap-val" id="gen-ap-project">—</div>
+            </div>
+          </div>
+          <div class="gen-ap-divider"></div>
+          <div class="gen-ap-row">
+            <div class="gen-ap-icon-wrap">📅</div>
+            <div class="gen-ap-info">
+              <div class="gen-ap-label">Start Date</div>
+              <div class="gen-ap-val" id="gen-ap-date">—</div>
+            </div>
+          </div>
+          <div class="gen-ap-divider"></div>
+          <div class="gen-ap-row">
+            <div class="gen-ap-icon-wrap">⏱️</div>
+            <div class="gen-ap-info">
+              <div class="gen-ap-label">Duration</div>
+              <div class="gen-ap-val" id="gen-ap-duration">—</div>
+            </div>
+          </div>
+          <div class="gen-ap-divider"></div>
+          <div class="gen-ap-row">
+            <div class="gen-ap-icon-wrap">✨</div>
+            <div class="gen-ap-info">
+              <div class="gen-ap-label">AI Will Create</div>
+              <div class="gen-ap-val" id="gen-ap-output">—</div>
+            </div>
+          </div>
+          <!-- Scan-enriched rows (hidden until scan runs) -->
+          <div class="gen-ap-divider" id="gen-ap-niche-div" style="display:none;"></div>
+          <div class="gen-ap-row" id="gen-ap-niche-row" style="display:none;">
+            <div class="gen-ap-icon-wrap">🎯</div>
+            <div class="gen-ap-info">
+              <div class="gen-ap-label">Niche</div>
+              <div class="gen-ap-val" id="gen-ap-niche">—</div>
+            </div>
+          </div>
+          <div class="gen-ap-divider" id="gen-ap-audience-div" style="display:none;"></div>
+          <div class="gen-ap-row" id="gen-ap-audience-row" style="display:none;">
+            <div class="gen-ap-icon-wrap">👥</div>
+            <div class="gen-ap-info">
+              <div class="gen-ap-label">Audience</div>
+              <div class="gen-ap-val" id="gen-ap-audience">—</div>
+            </div>
+          </div>
+          <div class="gen-ap-divider" id="gen-ap-tone-div" style="display:none;"></div>
+          <div class="gen-ap-row" id="gen-ap-tone-row" style="display:none;">
+            <div class="gen-ap-icon-wrap">🗣️</div>
+            <div class="gen-ap-info">
+              <div class="gen-ap-label">Brand Voice</div>
+              <div class="gen-ap-val" id="gen-ap-tone">—</div>
+            </div>
+          </div>
+        </div>
+        <button class="gen-submit-btn gen-ap-btn" onclick="submitGenApproval()">
+          <i class="fas fa-bolt"></i> Confirm &amp; Generate
+        </button>
+        <div class="gen-ap-edit-wrap">
+          <button class="gen-edit-link" onclick="_showGenForm()"><i class="fas fa-pencil-alt"></i> Edit settings</button>
+        </div>
+      </div>
+
+      <!-- ── FORM VIEW (shown when no project or editing) ── -->
       <form onsubmit="generateCalendar(event)" id="gen-form">
         <input type="hidden" id="gen-grid-id" value="">
 
@@ -1372,9 +1582,8 @@
         <div>
           <label class="form-label">Assign Role</label>
           <select id="inv-role" class="form-input">
-            <option value="worker">🎨 Worker — Calendar view only</option>
-            <option value="executive">💼 Executive — Calendar + stats</option>
-            <option value="manager" id="inv-role-manager">⚙️ Manager — Grid + Board + Calendar</option>
+            <option value="va" selected>🎯 Virtual Assistant — View campaigns &amp; calendar</option>
+            <option value="manager">⚙️ Manager — Create &amp; manage campaigns</option>
             <option value="admin" id="inv-role-admin" style="display:none;">🛡️ Admin — Full access</option>
           </select>
         </div>
@@ -1396,6 +1605,6 @@
 <script>
   window.__CF_USER__ = {{ current_user | tojson }};
 </script>
-<script src="{{ url_for('static', filename='js/app.js') }}?v=70"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=90"></script>
 </body>
 </html>
