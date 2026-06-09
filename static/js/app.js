@@ -2,7 +2,7 @@
    ContentFlow — App Logic v10
    ═══════════════════════════════════════════════════════════════════════ */
 
-const API = 'http://localhost:8080/api';
+const API = '/api';
 
 // ── Format label helper (used everywhere format is displayed) ─────────────
 const FMT_MAP = {
