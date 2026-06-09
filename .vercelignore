@@ -1,0 +1,13 @@
+# Exclude everything by default, then include only app files
+*
+
+# Un-exclude the app source files
+!content_calendar_app.py
+!copywriting_agent.py
+!ideation_engine.py
+!requirements.txt
+!vercel.json
+!templates/
+!templates/**
+!static/
+!static/**
