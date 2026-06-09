@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContentFlow — AI Content Calendar</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=32">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+    <span class="logo-text">ContentFlow</span>
+    <button class="sidebar-toggle" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+  </div>
+
+  <div class="sidebar-section">
+    <div class="sidebar-section-header">
+      <span>PROJECTS</span>
+      <button class="btn-icon-sm" onclick="openProjectWizard()" title="New Project">
+        <i class="fas fa-plus"></i>
+      </button>
+    </div>
+    <div id="sidebar-projects" class="sidebar-projects">
+      <div class="sidebar-empty">No projects yet</div>
+    </div>
+  </div>
+
+  <div class="sidebar-bottom">
+    <a class="sidebar-nav-item" onclick="openGlobalView('team')" id="nav-team">
+      <i class="fas fa-users"></i><span>Team</span>
+    </a>
+    <a class="sidebar-nav-item" onclick="openGlobalView('analytics')" id="nav-analytics">
+      <i class="fas fa-chart-line"></i><span>Analytics</span>
+    </a>
+    <a class="sidebar-nav-item" onclick="openGlobalView('settings')" id="nav-settings">
+      <i class="fas fa-cog"></i><span>Settings</span>
+    </a>
+    <a class="sidebar-nav-item admin-only" href="/admin" id="nav-admin">
+      <i class="fas fa-shield-alt"></i><span>Admin</span>
+    </a>
+
+    <!-- ── Compact presence strip (manager+) ─────────────────── -->
+    <div class="presence-strip manager-up" id="sidebar-online-panel">
+      <span class="presence-strip-label"><span class="online-dot-pulse"></span> <span id="online-count-badge">0</span> online</span>
+      <div class="presence-avatars" id="online-members-list"></div>
+    </div>
+
+    <!-- ── Current User Block ──────────────────────────────────── -->
+    <div class="sidebar-user-block" id="sidebar-user">
+      <div class="sidebar-user-left">
+        <div class="sidebar-user-avatar" id="sidebar-user-avatar">G</div>
+        <div class="online-self-dot online" id="sidebar-self-dot"></div>
+      </div>
+      <div class="sidebar-user-info" id="sidebar-user-info">
+        <div class="sidebar-user-name">Guest</div>
+        <div class="sidebar-user-email">guest@local</div>
+      </div>
+      <button class="sidebar-action-btn" onclick="toggleChat()" title="Team Chat" id="chat-sidebar-btn">
+        <i class="fas fa-comments"></i>
+        <span id="chat-fab-badge" class="sidebar-chat-badge" style="display:none"></span>
+      </button>
+      <a href="/logout" class="sidebar-action-btn" title="Sign out">
+        <i class="fas fa-sign-out-alt"></i>
+      </a>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════════ MAIN ══════════════════════════════════ -->
+<main class="main-content" id="main-content">
+
+  <!-- ── Home / Empty state ─────────────────────────────────────────────── -->
+  <div id="view-home" class="view active">
+    <div class="empty-state">
+      <div class="empty-icon"><i class="fas fa-bolt"></i></div>
+      <h2>Welcome to ContentFlow</h2>
+      <p>Your AI-powered content calendar & team workspace.<br>Create your first project to get started.</p>
+      <button class="btn-primary btn-lg" onclick="openProjectWizard()">
+        <i class="fas fa-plus"></i> Create First Project
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Project View ────────────────────────────────────────────────────── -->
+  <div id="view-project" class="view">
+    <div class="project-topbar">
+      <div class="project-topbar-left">
+        <span id="project-emoji" class="project-emoji-big">🚀</span>
+        <div>
+          <h1 id="project-name-header">Project</h1>
+          <span id="project-niche-header" class="project-niche-sub"></span>
+        </div>
+      </div>
+      <div class="project-topbar-right">
+        <button class="btn-secondary btn-sm manager-up" onclick="openGenerateModal()">
+          <i class="fas fa-magic"></i> Generate Calendar
+        </button>
+        <div class="project-menu-wrap" id="projectMenuWrap">
+          <button class="btn-secondary btn-sm" onclick="toggleProjectMenu()">
+            <i class="fas fa-ellipsis-h"></i>
+          </button>
+          <div class="project-menu-dropdown" id="projectMenuDropdown">
+            <button onclick="openContentStrategy();closeProjectMenu()"><i class="fas fa-lightbulb"></i> Content Strategy</button>
+            <button onclick="openGridCalendar();closeProjectMenu()"><i class="fas fa-th"></i> Grid Calendar</button>
+            <button onclick="openProjectSettings();closeProjectMenu()"><i class="fas fa-cog"></i> Project Settings</button>
+            <button class="danger admin-only" onclick="confirmDeleteProject();closeProjectMenu()"><i class="fas fa-trash-alt"></i> Delete Project</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="project-tabs">
+      <button class="ptab active" onclick="switchProjectTab('overview')" data-tab="overview">
+        <i class="fas fa-th-large"></i> Grid
+      </button>
+      <button class="ptab" onclick="switchProjectTab('board')" data-tab="board">
+        <i class="fas fa-columns"></i> Board
+      </button>
+      <button class="ptab" onclick="switchProjectTab('calendar')" data-tab="calendar">
+        <i class="fas fa-calendar-alt"></i> Calendar
+      </button>
+      <button class="ptab" onclick="switchProjectTab('list')" data-tab="list">
+        <i class="fas fa-list"></i> List
+      </button>
+      <button class="ptab" onclick="switchProjectTab('team-tab')" data-tab="team-tab">
+        <i class="fas fa-users"></i> Team
+      </button>
+    </nav>
+
+    <!-- ══════════════ CAMPAIGN GRID (Home Tab) ══════════════ -->
+    <div id="tab-overview" class="tab-panel active">
+
+      <!-- ── 3-Grid Header ── -->
+      <div class="cg-setup-bar">
+        <div class="cg-setup-left">
+          <h2 class="cg-main-title"><i class="fas fa-columns" style="color:var(--primary);"></i> Campaign Grid</h2>
+          <p class="cg-main-sub">3 content pillars · 2 posts/day rotation · generate per day</p>
+        </div>
+        <div class="cg-grid-pills" id="cg-grid-pills">
+          <!-- 3 grid pills rendered by JS -->
+        </div>
+        <div class="cg-setup-right">
+          <button class="btn-secondary btn-sm" onclick="openCGGridEditor()"><i class="fas fa-sliders-h"></i> Setup Grids</button>
+          <button class="btn-primary btn-sm" onclick="openGenerateModal()"><i class="fas fa-plus"></i> New Campaign</button>
+        </div>
+      </div>
+
+      <!-- ── Campaign selector ── -->
+      <div class="cg-cal-bar" id="cg-cal-bar" style="display:none;">
+        <select id="cg-calendar-select" class="select-sm" onchange="loadCGCalendar(this.value)">
+          <option value="">— select campaign —</option>
+        </select>
+        <span id="cg-campaign-label" class="cg-campaign-label"></span>
+        <button class="btn-secondary btn-sm" onclick="switchProjectTab('calendar')"><i class="fas fa-eye"></i> Full Calendar View</button>
+        <button class="btn-secondary btn-sm manager-up" onclick="resetCampaign()" style="color:#ef4444;border-color:#fca5a5;" title="Delete all generated content and clear the grid"><i class="fas fa-trash-alt"></i> Reset Campaign</button>
+      </div>
+
+      <!-- ── Main area: table + side panel ── -->
+      <div class="cg-main-wrap">
+
+        <!-- Campaign table -->
+        <div class="cg-table-outer" id="cg-table-outer">
+          <div class="cg-empty-state" id="cg-empty-state">
+            <i class="fas fa-calendar-plus"></i>
+            <p>Generate a campaign to see the 3-column grid</p>
+            <button class="btn-primary" onclick="openGenerateModal()"><i class="fas fa-magic"></i> Generate Campaign</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Day panel modal (full-screen overlay) -->
+      <div class="cg-day-panel" id="cg-day-panel" onclick="if(event.target===this)closeCGPanel()">
+        <div class="cg-panel-inner">
+          <button class="cg-panel-close" onclick="closeCGPanel()"><i class="fas fa-times"></i></button>
+          <div id="cg-panel-body"></div>
+        </div>
+      </div>
+
+      <!-- ── Stats Strip ── -->
+      <div class="gd-stats-strip" id="project-stats-row"></div>
+
+      <!-- ── Secondary: Milestones + Calendars + Activity ── -->
+      <div class="gd-secondary-row">
+        <div class="card gd-sec-card">
+          <div class="card-header">
+            <h3><i class="fas fa-flag"></i> Milestones</h3>
+            <button class="btn-icon-sm" onclick="openAddMilestone()"><i class="fas fa-plus"></i></button>
+          </div>
+          <div id="milestones-list" class="milestones-list"></div>
+        </div>
+        <div class="card gd-sec-card">
+          <div class="card-header">
+            <h3><i class="fas fa-calendar"></i> Campaigns</h3>
+            <button class="btn-secondary btn-sm" onclick="openGenerateModal()"><i class="fas fa-magic"></i> New</button>
+          </div>
+          <div id="project-calendars-list" class="calendars-list"></div>
+        </div>
+        <div class="card gd-sec-card">
+          <div class="card-header"><h3><i class="fas fa-stream"></i> Activity</h3></div>
+          <div id="activity-feed" class="activity-feed"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Board Tab -->
+    <div id="tab-board" class="tab-panel">
+      <div class="board-header">
+        <div class="board-filters">
+          <select id="board-calendar-select" onchange="loadBoard()" class="select-sm">
+            <option value="">All Calendars</option>
+          </select>
+        </div>
+      </div>
+      <div class="board-columns" id="board-columns"></div>
+    </div>
+
+    <!-- Calendar Tab -->
+    <div id="tab-calendar" class="tab-panel">
+      <div class="cal-header-bar">
+        <select id="cal-select-dropdown" onchange="loadSelectedCalendar(this.value)" class="select-sm">
+          <option value="">Select calendar...</option>
+        </select>
+        <button class="btn-secondary btn-sm" onclick="openGenerateModal()">
+          <i class="fas fa-magic"></i> Generate New
+        </button>
+      </div>
+      <div id="calendar-grid-container"></div>
+      <div id="concept-detail-panel" class="concept-detail-panel" style="display:none;"></div>
+    </div>
+
+    <!-- List Tab -->
+    <div id="tab-list" class="tab-panel">
+      <div class="list-header">
+        <select id="list-calendar-select" onchange="renderListView()" class="select-sm">
+          <option value="">All Calendars</option>
+        </select>
+        <div class="list-filters">
+          <select id="list-status-filter" onchange="renderListView()" class="select-sm">
+            <option value="">All Statuses</option>
+            <option value="idea">Idea</option>
+            <option value="assigned">Assigned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="submitted">Submitted</option>
+            <option value="approved">Approved</option>
+            <option value="published">Published</option>
+          </select>
+        </div>
+      </div>
+      <div id="list-table-container"></div>
+    </div>
+
+    <!-- Team Tab -->
+    <div id="tab-team-tab" class="tab-panel">
+      <div class="team-header">
+        <h3>Team Members</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-primary btn-sm manager-up" onclick="openInviteModal()">
+            <i class="fas fa-user-plus"></i> Invite Member
+          </button>
+          <button class="btn-secondary btn-sm admin-only" onclick="openUserManager()">
+            <i class="fas fa-users-cog"></i> Manage Roles
+          </button>
+        </div>
+      </div>
+      <div id="team-members-grid" class="team-grid"></div>
+    </div>
+
+    <!-- Followers Push Tab -->
+    <div id="tab-followers" class="tab-panel">
+      <div class="fp-header">
+        <div class="fp-header-left">
+          <div class="fp-icon">📈</div>
+          <div>
+            <h3>Followers Push</h3>
+            <p>Content specifically designed to grow your Instagram followers fast</p>
+          </div>
+        </div>
+        <div class="fp-header-right">
+          <button class="btn-secondary btn-sm" onclick="openGridCalendar()"><i class="fas fa-th"></i> Grid Calendar</button>
+          <button class="btn-primary btn-sm" onclick="generateFollowerPush()"><i class="fas fa-magic"></i> Generate Push Plan</button>
+        </div>
+      </div>
+      <!-- Follower stats strip -->
+      <div class="fp-stats" id="fp-stats">
+        <div class="fp-stat"><span id="fp-count">0</span><label>Follower Push Posts</label></div>
+        <div class="fp-stat"><span id="fp-scheduled">0</span><label>Scheduled</label></div>
+        <div class="fp-stat"><span id="fp-published">0</span><label>Published</label></div>
+        <div class="fp-stat fp-stat-gain"><span id="fp-gain">+0</span><label>Total Follower Gain</label></div>
+      </div>
+      <!-- Follower push content grid -->
+      <div id="fp-concepts-grid" class="fp-grid"></div>
+    </div>
+  </div>
+
+  <!-- ── Global Team View ───────────────────────────────────────────────── -->
+  <div id="view-global-team" class="view">
+    <div class="page-header">
+      <h1><i class="fas fa-users"></i> Team</h1>
+      <button class="btn-primary btn-sm" onclick="openAddGlobalMemberModal()">
+        <i class="fas fa-user-plus"></i> Add Member
+      </button>
+    </div>
+    <div id="global-team-grid" class="team-grid"></div>
+  </div>
+
+  <!-- ── Global Analytics View ─────────────────────────────────────────── -->
+  <div id="view-global-analytics" class="view">
+    <div class="page-header"><h1><i class="fas fa-chart-line"></i> Analytics</h1></div>
+    <div class="stats-row" id="global-stats-row"></div>
+    <div class="analytics-charts">
+      <div class="chart-card">
+        <h3>Content by Type</h3>
+        <canvas id="contentTypeChart" height="200"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Engagement Trend</h3>
+        <canvas id="engagementTrendChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Settings View ─────────────────────────────────────────────────── -->
+  <div id="view-global-settings" class="view">
+    <div class="page-header"><h1><i class="fas fa-cog"></i> Settings</h1></div>
+
+    <div class="settings-layout">
+      <!-- Left nav -->
+      <nav class="settings-nav" id="settings-nav">
+        <button class="settings-nav-item active" onclick="switchSettingsTab('workspace')" id="stab-workspace" data-admin-only="true">
+          <i class="fas fa-building"></i> Workspace
+        </button>
+        <button class="settings-nav-item" onclick="switchSettingsTab('account')" id="stab-account">
+          <i class="fas fa-user-circle"></i> My Account
+        </button>
+        <button class="settings-nav-item" onclick="switchSettingsTab('team')" id="stab-team" data-admin-only="true">
+          <i class="fas fa-users"></i> Team &amp; Users
+        </button>
+        <button class="settings-nav-item" onclick="switchSettingsTab('integrations')" id="stab-integrations" data-admin-only="true">
+          <i class="fas fa-plug"></i> Integrations
+        </button>
+        <button class="settings-nav-item" onclick="switchSettingsTab('notifications')" id="stab-notifications" data-admin-only="true">
+          <i class="fas fa-bell"></i> Notifications
+        </button>
+        <button class="settings-nav-item" onclick="switchSettingsTab('messaging')" id="stab-messaging" data-admin-only="true">
+          <i class="fas fa-comment-dots"></i> Messaging
+        </button>
+      </nav>
+
+      <!-- Right panel -->
+      <div class="settings-panel">
+
+        <!-- ── Workspace ─────────────────────────────────────────── -->
+        <div id="spanel-workspace" class="spanel active">
+          <div class="settings-card">
+            <h3><i class="fas fa-building" style="color:var(--primary);margin-right:8px;"></i>Workspace</h3>
+            <p class="settings-desc">App-wide settings visible to all users.</p>
+            <div class="form-group">
+              <label>App / Workspace Name</label>
+              <input type="text" id="ws-app-name" class="form-input" placeholder="ContentFlow">
+            </div>
+            <div class="form-group">
+              <label>Allow Guest Login</label>
+              <select id="ws-guest-login" class="form-input">
+                <option value="1">Enabled — anyone can log in as guest</option>
+                <option value="0">Disabled — only invited users</option>
+              </select>
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveWorkspaceSettings()"><i class="fas fa-save"></i> Save</button>
+            </div>
+            <div id="ws-msg" class="api-msg"></div>
+          </div>
+          <div class="settings-card">
+            <h3><i class="fas fa-sign-in-alt" style="color:#6366f1;margin-right:8px;"></i>Google OAuth (SSO)</h3>
+            <p class="settings-desc">Let users sign in with their Google account instead of a password.</p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Google Client ID</label>
+                <input type="text" id="ws-google-id" class="form-input" placeholder="xxxx.apps.googleusercontent.com">
+              </div>
+              <div class="form-group">
+                <label>Google Client Secret</label>
+                <input type="password" id="ws-google-secret" class="form-input" placeholder="GOCSPX-...">
+              </div>
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveWorkspaceSettings()"><i class="fas fa-save"></i> Save OAuth</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── My Account ────────────────────────────────────────── -->
+        <div id="spanel-account" class="spanel">
+          <div class="settings-card">
+            <h3><i class="fas fa-id-badge" style="color:var(--primary);margin-right:8px;"></i>My Profile</h3>
+            <p class="settings-desc">Update your display name.</p>
+            <div class="form-group">
+              <label>Full Name</label>
+              <input type="text" id="profile-name" class="form-input" placeholder="Your name">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="profile-email" class="form-input" disabled style="opacity:.6;cursor:not-allowed;">
+              <small style="color:var(--text-muted);">Email cannot be changed here. Contact an admin.</small>
+            </div>
+            <div class="form-group">
+              <label>Role</label>
+              <input type="text" id="profile-role" class="form-input" disabled style="opacity:.6;cursor:not-allowed;text-transform:capitalize;">
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveMyProfile()"><i class="fas fa-save"></i> Save Profile</button>
+            </div>
+            <div id="profile-msg" class="api-msg"></div>
+          </div>
+          <div class="settings-card">
+            <h3><i class="fas fa-lock" style="color:#f59e0b;margin-right:8px;"></i>Change Password</h3>
+            <p class="settings-desc">Set a new login password for your account.</p>
+            <div class="form-group">
+              <label>New Password</label>
+              <input type="password" id="new-password" class="form-input" placeholder="Minimum 6 characters" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+              <label>Confirm New Password</label>
+              <input type="password" id="confirm-password" class="form-input" placeholder="Re-enter new password" autocomplete="new-password">
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveMyPassword()"><i class="fas fa-key"></i> Update Password</button>
+            </div>
+            <div id="password-msg" class="api-msg"></div>
+          </div>
+        </div>
+
+        <!-- ── Team & Users ──────────────────────────────────────── -->
+        <div id="spanel-team" class="spanel">
+          <div class="settings-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <h3 style="margin:0;"><i class="fas fa-users" style="color:var(--primary);margin-right:8px;"></i>Team Members</h3>
+              <span id="team-count-badge" class="settings-badge"></span>
+            </div>
+            <p class="settings-desc">Manage roles and access for all users in this workspace.</p>
+            <div id="team-users-table" class="team-table-wrap">
+              <div class="settings-loading"><i class="fas fa-spinner fa-spin"></i> Loading users…</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Integrations ──────────────────────────────────────── -->
+        <div id="spanel-integrations" class="spanel">
+          <div class="settings-card">
+            <h3><i class="fas fa-robot" style="color:var(--primary);margin-right:8px;"></i>AI Engine — Anthropic</h3>
+            <p class="settings-desc">Required to generate AI content. Get your key from
+              <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>
+            </p>
+            <div id="api-key-status-bar" class="api-status-bar"></div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-..." autocomplete="off" class="form-input">
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveApiKey()"><i class="fas fa-save"></i> Save Key</button>
+              <button class="btn-success" onclick="testApiKey()"><i class="fas fa-plug"></i> Test Connection</button>
+            </div>
+            <div id="api-key-message" class="api-msg"></div>
+          </div>
+          <div class="settings-card">
+            <h3><i class="fas fa-search" style="color:#f59e0b;margin-right:8px;"></i>Competitor Finder</h3>
+            <p class="settings-desc">Used to discover Instagram &amp; TikTok competitors automatically. Get your token from
+              <a href="https://console.apify.com/account/integrations" target="_blank">console.apify.com</a>
+            </p>
+            <div id="apify-status-bar" class="api-status-bar"></div>
+            <div class="form-group">
+              <label>API Token</label>
+              <input type="password" id="apifyKeyInput" placeholder="apify_api_..." autocomplete="off" class="form-input">
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveApifyKey()"><i class="fas fa-save"></i> Save Token</button>
+            </div>
+            <div id="apify-key-message" class="api-msg"></div>
+          </div>
+          <div class="settings-card">
+            <h3><i class="fas fa-tasks" style="color:#10b981;margin-right:8px;"></i>Asana (Task Sync)</h3>
+            <p class="settings-desc">Sync ContentFlow tasks to Asana projects. Get your token from
+              <a href="https://app.asana.com/0/my-apps" target="_blank">app.asana.com</a>
+            </p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Personal Access Token</label>
+                <input type="password" id="asana-key" class="form-input" placeholder="1/123456:xxxxxxxx">
+              </div>
+              <div class="form-group">
+                <label>Workspace ID</label>
+                <input type="text" id="asana-workspace" class="form-input" placeholder="123456789">
+              </div>
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveIntegrationExtras()"><i class="fas fa-save"></i> Save Asana</button>
+            </div>
+            <div id="integration-extras-msg" class="api-msg"></div>
+          </div>
+        </div>
+
+        <!-- ── Notifications ─────────────────────────────────────── -->
+        <div id="spanel-notifications" class="spanel">
+          <div class="settings-card">
+            <h3><i class="fas fa-envelope" style="color:#10b981;margin-right:8px;"></i>Email / SMTP</h3>
+            <p class="settings-desc">Send daily reminders, task assignments, and completion alerts. Works with Gmail, SendGrid, Mailgun, etc.</p>
+            <div id="email-status-bar" class="api-status-bar"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>SMTP Host</label>
+                <input type="text" id="smtp-host" class="form-input" placeholder="smtp.gmail.com">
+              </div>
+              <div class="form-group form-group-sm">
+                <label>Port</label>
+                <input type="number" id="smtp-port" class="form-input" value="587" placeholder="587">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>SMTP Username / Email</label>
+                <input type="email" id="smtp-user" class="form-input" placeholder="you@gmail.com">
+              </div>
+              <div class="form-group">
+                <label>SMTP Password / App Password</label>
+                <input type="password" id="smtp-password" class="form-input" placeholder="App password">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>From Name</label>
+                <input type="text" id="smtp-from-name" class="form-input" placeholder="ContentFlow" value="ContentFlow">
+              </div>
+              <div class="form-group">
+                <label>From Email</label>
+                <input type="email" id="smtp-from" class="form-input" placeholder="noreply@yourdomain.com">
+              </div>
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveEmailSettings()"><i class="fas fa-save"></i> Save Email Settings</button>
+              <button class="btn-success" onclick="testEmailSettings()"><i class="fas fa-paper-plane"></i> Send Test Email</button>
+            </div>
+            <div id="email-settings-message" class="api-msg"></div>
+            <div class="settings-note">
+              <i class="fas fa-info-circle"></i>
+              <span>Gmail: enable 2FA and use an <strong>App Password</strong>, not your account password. Daily reminders fire at 9 AM automatically.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Messaging ─────────────────────────────────────────── -->
+        <div id="spanel-messaging" class="spanel">
+          <div class="settings-card">
+            <h3><i class="fab fa-whatsapp" style="color:#25d366;margin-right:8px;"></i>WhatsApp Alerts (Twilio)</h3>
+            <p class="settings-desc">Send daily digest and task notifications to team members via WhatsApp. Requires a Twilio account with WhatsApp sandbox or production number.</p>
+            <div class="form-group">
+              <label>Twilio Account SID</label>
+              <input type="text" id="twilio-sid" class="form-input" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+            </div>
+            <div class="form-group">
+              <label>Twilio Auth Token</label>
+              <input type="password" id="twilio-token" class="form-input" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+            </div>
+            <div class="form-group">
+              <label>WhatsApp Number (with whatsapp: prefix)</label>
+              <input type="text" id="twilio-number" class="form-input" placeholder="whatsapp:+14155238886">
+            </div>
+            <div class="settings-actions">
+              <button class="btn-primary" onclick="saveMessagingSettings()"><i class="fas fa-save"></i> Save WhatsApp Settings</button>
+            </div>
+            <div id="messaging-msg" class="api-msg"></div>
+            <div class="settings-note">
+              <i class="fas fa-info-circle"></i>
+              <span>Get your Twilio credentials at <a href="https://console.twilio.com" target="_blank">console.twilio.com</a>. Use the Twilio WhatsApp Sandbox for testing.</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /settings-panel -->
+    </div><!-- /settings-layout -->
+  </div>
+
+</main>
+
+<!-- ═══════════════════════════ MODALS ═══════════════════════════════════ -->
+
+<!-- ── Project Creation Wizard ───────────────────────────────────────── -->
+<div id="wizardModal" class="modal-overlay">
+  <div class="modal-box modal-wide">
+    <button class="modal-close" onclick="closeModal('wizardModal')"><i class="fas fa-times"></i></button>
+
+    <!-- AI Pre-step (shown before step 1) -->
+    <div class="wizard-ai-step active" id="wstep-ai">
+
+      <!-- ── Stage A: Describe ─────────────────────────────────────── -->
+      <div id="ai-stage-a">
+        <div class="ai-prefill-header">
+          <div class="ai-prefill-icon">✨</div>
+          <h2>Tell AI About Your Project</h2>
+          <p>Write a quick description — who you are, what you sell, who your audience is. AI will ask a few follow-up questions before building your project.</p>
+        </div>
+        <textarea id="ai-describe-input" class="form-input form-textarea ai-describe-textarea"
+          placeholder="e.g. I run a golf simulator café in Bangkok called Destin targeting expats and young professionals aged 25-40. Our USP is the only golf sim + specialty coffee combo in the area. Goal is to grow Instagram followers and convert to bookings."></textarea>
+        <div class="ai-prefill-actions">
+          <button class="btn-primary btn-lg" onclick="aiContinueToQuestions()">
+            Next — AI will ask you a few things <i class="fas fa-arrow-right"></i>
+          </button>
+          <button class="btn-ghost" onclick="skipToManual()">Fill manually →</button>
+        </div>
+      </div>
+
+      <!-- ── Stage B: AI conversation ─────────────────────────────── -->
+      <div id="ai-stage-b" style="display:none;">
+
+        <!-- AI question bubble -->
+        <div class="ai-conv-row">
+          <div class="ai-conv-avatar"><i class="fas fa-robot"></i></div>
+          <div id="ai-conv-bubble" class="ai-conv-bubble">
+            <div class="ai-conv-typing">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- User answer area — hidden until AI finishes -->
+        <div id="ai-answer-area" style="display:none;">
+          <div class="ai-conv-row ai-conv-row-user">
+            <div class="ai-conv-user-label">Your answers</div>
+          </div>
+          <textarea id="ai-q-answer" class="form-input form-textarea ai-answer-textarea"
+            placeholder="Type your answers here — e.g. '1. Free golf tips + BTS sessions  2. Social casual players  3. 30 days'"></textarea>
+
+          <div id="ai-extract-loading" style="display:none;" class="ai-extract-loading">
+            <div class="ai-extract-spinner"><i class="fas fa-spinner fa-spin"></i></div>
+            <span>AI is building your project plan...</span>
+          </div>
+          <div id="ai-extract-result" class="ai-extract-result" style="display:none;"></div>
+
+          <div class="ai-prefill-actions" id="ai-build-actions">
+            <button class="btn-primary btn-lg" onclick="fillWithAI()">
+              <i class="fas fa-magic"></i> Build My Project with AI
+            </button>
+            <button class="btn-ghost" onclick="aiGoBackToDescription()">← Back</button>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div class="wizard-header" id="wizard-form-header" style="display:none;">
+      <div class="wizard-steps" id="wizard-steps-indicators">
+        <div class="wstep active" data-step="1"><span>1</span><small>Basics</small></div>
+        <div class="wstep" data-step="2"><span>2</span><small>Audience</small></div>
+        <div class="wstep" data-step="3"><span>3</span><small>Brand</small></div>
+        <div class="wstep" data-step="4"><span>4</span><small>Campaign</small></div>
+        <div class="wstep" data-step="5"><span>5</span><small>Grids</small></div>
+        <div class="wstep" data-step="6"><span>6</span><small>Team & Review</small></div>
+      </div>
+    </div>
+
+    <!-- Step 1: Basics -->
+    <div class="wizard-step" id="wstep-1">
+      <h2 class="wizard-title">Project Basics</h2>
+      <p class="wizard-sub">Tell us about this client or brand</p>
+      <div class="wizard-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Project / Client Name *</label>
+            <input type="text" id="w-name" class="form-input" placeholder="e.g., Destin Bangkok">
+          </div>
+          <div class="form-group form-group-sm">
+            <label>Emoji</label>
+            <input type="text" id="w-emoji" class="form-input" value="🚀" maxlength="4" placeholder="🚀" readonly style="cursor:pointer;" onclick="toggleEmojiPicker()">
+          </div>
+        </div>
+        <!-- Emoji Picker -->
+        <div id="emoji-picker" class="emoji-picker" style="display:none;">
+          <div class="emoji-picker-section"><span class="emoji-section-label">Business</span>
+            <div class="emoji-grid">
+              <span onclick="pickEmoji('🚀')">🚀</span><span onclick="pickEmoji('💼')">💼</span><span onclick="pickEmoji('🏢')">🏢</span><span onclick="pickEmoji('💡')">💡</span><span onclick="pickEmoji('📊')">📊</span><span onclick="pickEmoji('🎯')">🎯</span><span onclick="pickEmoji('🏆')">🏆</span><span onclick="pickEmoji('💰')">💰</span>
+            </div>
+          </div>
+          <div class="emoji-picker-section"><span class="emoji-section-label">Food &amp; Hospitality</span>
+            <div class="emoji-grid">
+              <span onclick="pickEmoji('🍽️')">🍽️</span><span onclick="pickEmoji('☕')">☕</span><span onclick="pickEmoji('🍕')">🍕</span><span onclick="pickEmoji('🍜')">🍜</span><span onclick="pickEmoji('🥗')">🥗</span><span onclick="pickEmoji('🍣')">🍣</span><span onclick="pickEmoji('🏨')">🏨</span><span onclick="pickEmoji('🍹')">🍹</span>
+            </div>
+          </div>
+          <div class="emoji-picker-section"><span class="emoji-section-label">Sports &amp; Fitness</span>
+            <div class="emoji-grid">
+              <span onclick="pickEmoji('⛳')">⛳</span><span onclick="pickEmoji('🏋️')">🏋️</span><span onclick="pickEmoji('🧘')">🧘</span><span onclick="pickEmoji('🏊')">🏊</span><span onclick="pickEmoji('🎾')">🎾</span><span onclick="pickEmoji('🚴')">🚴</span><span onclick="pickEmoji('⚽')">⚽</span><span onclick="pickEmoji('🏄')">🏄</span>
+            </div>
+          </div>
+          <div class="emoji-picker-section"><span class="emoji-section-label">Creative &amp; Tech</span>
+            <div class="emoji-grid">
+              <span onclick="pickEmoji('🎨')">🎨</span><span onclick="pickEmoji('📸')">📸</span><span onclick="pickEmoji('🎬')">🎬</span><span onclick="pickEmoji('🎵')">🎵</span><span onclick="pickEmoji('💻')">💻</span><span onclick="pickEmoji('📱')">📱</span><span onclick="pickEmoji('✨')">✨</span><span onclick="pickEmoji('🌟')">🌟</span>
+            </div>
+          </div>
+          <div class="emoji-picker-section"><span class="emoji-section-label">Lifestyle &amp; Beauty</span>
+            <div class="emoji-grid">
+              <span onclick="pickEmoji('💄')">💄</span><span onclick="pickEmoji('👗')">👗</span><span onclick="pickEmoji('💎')">💎</span><span onclick="pickEmoji('🌸')">🌸</span><span onclick="pickEmoji('🌿')">🌿</span><span onclick="pickEmoji('🏡')">🏡</span><span onclick="pickEmoji('🛍️')">🛍️</span><span onclick="pickEmoji('❤️')">❤️</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Niche / Industry *</label>
+          <input type="text" id="w-niche" class="form-input" placeholder="e.g., Golf Simulator Café, Thai Restaurant, Fitness Studio" oninput="suggestBrandColors()">
+        </div>
+        <div class="form-group">
+          <label>Business Type</label>
+          <input type="text" id="w-business-type" class="form-input" placeholder="e.g., F&B + Entertainment, E-commerce, Coaching">
+        </div>
+        <div class="form-group">
+          <label>Primary Goal</label>
+          <input type="text" id="w-goal" class="form-input" placeholder="e.g., Grow to 10k followers and drive weekend bookings">
+        </div>
+        <div class="form-group">
+          <label>Brand Color <span style="font-weight:400;color:var(--text-muted);font-size:12px;">(auto-suggested from niche)</span></label>
+          <div class="color-picker-row" id="color-picker-row">
+            <div class="color-swatch active" data-color="#667eea" style="background:#667eea;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#f59e0b" style="background:#f59e0b;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#10b981" style="background:#10b981;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#ef4444" style="background:#ef4444;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#3b82f6" style="background:#3b82f6;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#8b5cf6" style="background:#8b5cf6;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#ec4899" style="background:#ec4899;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#f97316" style="background:#f97316;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#14b8a6" style="background:#14b8a6;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#1e293b" style="background:#1e293b;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#b45309" style="background:#b45309;" onclick="selectColor(this)"></div>
+            <div class="color-swatch" data-color="#166534" style="background:#166534;" onclick="selectColor(this)"></div>
+          </div>
+          <input type="hidden" id="w-color" value="#667eea">
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Target Audience -->
+    <div class="wizard-step" id="wstep-2">
+      <h2 class="wizard-title">Target Audience</h2>
+      <p class="wizard-sub">Who are we creating content for?</p>
+      <div class="wizard-form">
+        <div class="form-group">
+          <label>Age Range <span style="font-size:12px;font-weight:400;color:var(--text-muted);">Select all that apply</span></label>
+          <div class="age-chips" id="age-chips">
+            <button type="button" class="age-chip" data-age="13-17" onclick="toggleAgeChip(this)">13–17</button>
+            <button type="button" class="age-chip" data-age="18-24" onclick="toggleAgeChip(this)">18–24 <small>Gen Z</small></button>
+            <button type="button" class="age-chip active" data-age="25-34" onclick="toggleAgeChip(this)">25–34 <small>Millennial</small></button>
+            <button type="button" class="age-chip" data-age="35-44" onclick="toggleAgeChip(this)">35–44 <small>Gen X</small></button>
+            <button type="button" class="age-chip" data-age="45-54" onclick="toggleAgeChip(this)">45–54</button>
+            <button type="button" class="age-chip" data-age="55+" onclick="toggleAgeChip(this)">55+</button>
+          </div>
+          <input type="hidden" id="w-target-age" value="25-34">
+        </div>
+        <div class="form-group">
+          <label>Gender Focus</label>
+          <select id="w-target-gender" class="form-input">
+            <option value="All">All Genders</option>
+            <option value="Mostly Male">Mostly Male</option>
+            <option value="Mostly Female">Mostly Female</option>
+            <option value="Male">Male Only</option>
+            <option value="Female">Female Only</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Target Location / City</label>
+          <input type="text" id="w-target-location" class="form-input" placeholder="e.g., Bangkok, Thailand — expats and locals">
+        </div>
+        <div class="form-group">
+          <label>Key Interests & Lifestyle</label>
+          <textarea id="w-target-interests" class="form-input form-textarea" rows="3"
+            placeholder="e.g., Golf enthusiasts, coffee lovers, office workers who want weekend entertainment, young professionals who enjoy social sports"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Brand & Pain Points -->
+    <div class="wizard-step" id="wstep-3">
+      <h2 class="wizard-title">Pain Points &amp; Solutions</h2>
+      <p class="wizard-sub">What problems do you solve? Show real, specific work.</p>
+      <div class="wizard-form">
+        <div class="form-group">
+          <label>Audience Pain Points *</label>
+          <textarea id="w-pain-points" class="form-input form-textarea" rows="2"
+            placeholder="e.g., Bored on weekends, can't find unique dining + activity combos, golf is too serious/expensive"></textarea>
+        </div>
+
+        <!-- Solutions — at least 3 real/specific ones -->
+        <div class="form-group">
+          <label>Your Solutions <span style="font-weight:400;color:var(--text-muted);font-size:12px;">Add at least 3 — be specific, show real work</span></label>
+          <div id="solutions-list" class="solutions-list"></div>
+          <div class="solution-add-row">
+            <input type="text" id="solution-input" class="form-input" placeholder="e.g., We show real simulator sessions on camera every week — no scripted marketing">
+            <button type="button" class="btn-secondary btn-sm" onclick="addSolution()"><i class="fas fa-plus"></i> Add</button>
+          </div>
+          <div id="solutions-hint" class="solutions-hint" style="display:none;color:#dc2626;font-size:12px;margin-top:4px;">Add at least 3 specific solutions to continue</div>
+        </div>
+
+        <div class="form-group">
+          <label>Unique Selling Point (USP)</label>
+          <textarea id="w-usp" class="form-input form-textarea" rows="2"
+            placeholder="e.g., Only golf simulator + specialty café in Bangkok — play golf AND have a great meal without a membership fee"></textarea>
+        </div>
+
+        <!-- Competitor Finder -->
+        <div class="form-group">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <label style="margin:0;">Competitors</label>
+            <button type="button" class="btn-secondary btn-sm" onclick="findCompetitors()" id="find-competitors-btn">
+              <i class="fab fa-instagram"></i> Find on Instagram
+            </button>
+          </div>
+          <input type="text" id="w-competitors" class="form-input" placeholder="e.g., @golfclub_bkk, @thegolfcafe — comma separated">
+          <div id="competitor-results" class="competitor-results" style="display:none;"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Brand Colors / Aesthetic</label>
+          <input type="text" id="w-brand-colors" class="form-input" placeholder="e.g., Dark green + gold, clean minimalist golf vibes">
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Campaign -->
+    <div class="wizard-step" id="wstep-4">
+      <h2 class="wizard-title">Campaign Setup</h2>
+      <p class="wizard-sub">How long is this campaign and what's the brand voice?</p>
+      <div class="wizard-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Campaign Duration (days)</label>
+            <input type="number" id="w-campaign-days" class="form-input" value="30" min="7" max="90">
+          </div>
+          <div class="form-group">
+            <label>Campaign Start Date</label>
+            <input type="date" id="w-start-date" class="form-input">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Tone of Voice</label>
+          <select id="w-tone" class="form-input">
+            <option value="Fun & Relatable">Fun &amp; Relatable</option>
+            <option value="Professional & Authoritative">Professional &amp; Authoritative</option>
+            <option value="Inspirational & Motivational">Inspirational &amp; Motivational</option>
+            <option value="Casual & Conversational">Casual &amp; Conversational</option>
+            <option value="Bold & Edgy">Bold &amp; Edgy</option>
+            <option value="Luxury & Premium">Luxury &amp; Premium</option>
+            <option value="Educational & Informative">Educational &amp; Informative</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>What does success look like?</label>
+          <textarea id="w-success-goal" class="form-input" rows="2"
+            placeholder="e.g. Get 500 new followers, sell 30 tables per week, launch a new menu item…"
+            style="resize:vertical;min-height:60px;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5: Content Grids -->
+    <div class="wizard-step" id="wstep-5">
+      <h2 class="wizard-title">Content Grids</h2>
+      <p class="wizard-sub">Your campaign posts across 3 grids in daily rotation. Name and colour each one.</p>
+      <div class="wizard-form">
+        <div class="wgrid-config-list" id="wgrid-config-list">
+          <!-- Grid A -->
+          <div class="wgrid-config-card" id="wgrid-card-0">
+            <div class="wgrid-config-swatch" id="wgrid-swatch-0" style="background:#6366f1;" onclick="document.getElementById('wgrid-color-0').click()">A</div>
+            <input type="color" id="wgrid-color-0" value="#6366f1" style="display:none;" oninput="document.getElementById('wgrid-swatch-0').style.background=this.value">
+            <div style="flex:1;">
+              <input type="text" class="form-input wgrid-name-input" id="wgrid-name-0" value="Value Content"
+                placeholder="Grid A name…" style="margin-bottom:6px;">
+              <input type="text" class="form-input" id="wgrid-types-0" value="Value Bomb, Tips, Tutorial"
+                placeholder="Content types (comma separated)…" style="font-size:11px;">
+            </div>
+            <div class="wgrid-config-focus" id="wgrid-focus-0" style="background:#6366f118;color:#6366f1;">
+              📚 Value &amp; Education
+            </div>
+          </div>
+          <!-- Grid B -->
+          <div class="wgrid-config-card" id="wgrid-card-1">
+            <div class="wgrid-config-swatch" id="wgrid-swatch-1" style="background:#10b981;" onclick="document.getElementById('wgrid-color-1').click()">B</div>
+            <input type="color" id="wgrid-color-1" value="#10b981" style="display:none;" oninput="document.getElementById('wgrid-swatch-1').style.background=this.value">
+            <div style="flex:1;">
+              <input type="text" class="form-input wgrid-name-input" id="wgrid-name-1" value="Growth Content"
+                placeholder="Grid B name…" style="margin-bottom:6px;">
+              <input type="text" class="form-input" id="wgrid-types-1" value="Follower Push, Q&A, Behind the Scenes"
+                placeholder="Content types (comma separated)…" style="font-size:11px;">
+            </div>
+            <div class="wgrid-config-focus" id="wgrid-focus-1" style="background:#10b98118;color:#10b981;">
+              📈 Followers &amp; Reach
+            </div>
+          </div>
+          <!-- Grid C -->
+          <div class="wgrid-config-card" id="wgrid-card-2">
+            <div class="wgrid-config-swatch" id="wgrid-swatch-2" style="background:#f59e0b;" onclick="document.getElementById('wgrid-color-2').click()">C</div>
+            <input type="color" id="wgrid-color-2" value="#f59e0b" style="display:none;" oninput="document.getElementById('wgrid-swatch-2').style.background=this.value">
+            <div style="flex:1;">
+              <input type="text" class="form-input wgrid-name-input" id="wgrid-name-2" value="Sales Content"
+                placeholder="Grid C name…" style="margin-bottom:6px;">
+              <input type="text" class="form-input" id="wgrid-types-2" value="Godfather Offer, Flash Sale, Bundle Deal"
+                placeholder="Content types (comma separated)…" style="font-size:11px;">
+            </div>
+            <div class="wgrid-config-focus" id="wgrid-focus-2" style="background:#f59e0b18;color:#f59e0b;">
+              💰 Sales &amp; Conversions
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px 14px;background:var(--bg-secondary);border-radius:10px;font-size:11px;color:var(--text-secondary);">
+          <i class="fas fa-info-circle" style="color:var(--primary);margin-right:5px;"></i>
+          Each day posts 2 out of 3 grids in rotation — one grid rests per day. You can rename or reconfigure grids anytime from the Campaign tab.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6: Team & Review -->
+    <div class="wizard-step" id="wstep-6">
+      <h2 class="wizard-title">Team &amp; Review</h2>
+      <p class="wizard-sub">Add team members and confirm your project details</p>
+      <div class="wizard-form">
+        <div class="review-summary" id="wizard-review-summary"></div>
+
+        <div class="wizard-team-section">
+          <h4 style="margin-bottom:12px;">Add Team Members</h4>
+          <div class="wizard-add-member-row" style="position:relative;">
+            <div style="flex:1;position:relative;">
+              <input type="text" id="w-member-name" class="form-input" placeholder="Name" autocomplete="off"
+                oninput="teamAutoSuggest(this.value)" onblur="setTimeout(()=>closeTeamSuggest(),200)">
+              <div id="team-suggest-dropdown" class="team-suggest-dropdown" style="display:none;"></div>
+            </div>
+            <input type="email" id="w-member-email" class="form-input" placeholder="Email (for notifications)">
+            <input type="text" id="w-member-role" class="form-input" placeholder="Role">
+            <button type="button" class="btn-secondary btn-sm" onclick="addWizardMember()">
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
+          <div id="wizard-members-list" class="wizard-members-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wizard-footer" id="wizard-footer" style="display:none;">
+      <button class="btn-ghost" id="wizard-back-btn" onclick="wizardBack()" style="display:none;">
+        <i class="fas fa-arrow-left"></i> Back
+      </button>
+      <div class="wizard-step-label" id="wizard-step-label">Step 1 of 6</div>
+      <button class="btn-primary" id="wizard-next-btn" onclick="wizardNext()">
+        Next <i class="fas fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Generate Calendar Modal ───────────────────────────────────────── -->
+<div id="generateModal" class="modal-overlay">
+  <div class="modal-box modal-sm gen-modal">
+    <button class="modal-close gen-modal-close" onclick="closeModal('generateModal')"><i class="fas fa-times"></i></button>
+
+    <!-- Hero header -->
+    <div class="gen-modal-hero">
+      <div class="gen-modal-icon"><i class="fas fa-magic"></i></div>
+      <div class="gen-modal-hero-text">
+        <h2>Generate AI Campaign</h2>
+        <p>AI builds your full content calendar in ~30 seconds</p>
+      </div>
+    </div>
+
+    <div class="modal-scroll-body">
+      <form onsubmit="generateCalendar(event)" id="gen-form">
+        <input type="hidden" id="gen-grid-id" value="">
+
+        <!-- Grid banner — shown when launched from Grid tab -->
+        <div id="gen-grid-banner" class="gen-grid-banner" style="display:none;">
+          <i class="fas fa-th-large"></i>
+          <div>
+            <div id="gen-grid-label" class="gen-grid-label"></div>
+            <div class="gen-grid-sub">Content types will follow your grid rotation</div>
+          </div>
+        </div>
+
+        <!-- Project selector -->
+        <div class="gen-field">
+          <label class="gen-label"><i class="fas fa-rocket"></i> Project</label>
+          <select id="gen-client-select" class="gen-select" required>
+            <option value="">Choose a project…</option>
+          </select>
+        </div>
+
+        <!-- Date + Days row -->
+        <div class="gen-row">
+          <div class="gen-field">
+            <label class="gen-label"><i class="fas fa-calendar-alt"></i> Start Date</label>
+            <input type="date" id="gen-start-date" class="gen-input" required>
+          </div>
+          <div class="gen-field gen-field-sm">
+            <label class="gen-label"><i class="fas fa-clock"></i> Days</label>
+            <input type="number" id="gen-campaign-days" class="gen-input" value="30" min="7" max="90" required>
+          </div>
+        </div>
+
+        <button type="submit" class="gen-submit-btn">
+          <i class="fas fa-magic"></i> Generate Campaign
+        </button>
+      </form>
+    </div>
+
+    <!-- Progress -->
+    <div id="gen-progress" style="display:none;" class="gen-progress-wrap">
+      <div class="gen-progress-icon"><i class="fas fa-brain"></i></div>
+      <p id="gen-progress-text" class="gen-progress-text">Generating concepts with AI…</p>
+      <div class="gen-progress-bar"><div class="gen-progress-fill" id="gen-progress-fill"></div></div>
+      <p class="gen-progress-sub">This takes about 25–40 seconds</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Project Settings Modal ────────────────────────────────────────── -->
+<div id="projectSettingsModal" class="modal-overlay">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('projectSettingsModal')"><i class="fas fa-times"></i></button>
+    <h2 class="modal-title"><i class="fas fa-cog"></i> Project Settings</h2>
+    <div class="modal-scroll-body">
+      <div class="form-row">
+        <div class="form-group" style="flex:0 0 60px;">
+          <label>Icon</label>
+          <input type="text" id="ps-emoji" class="form-input" style="font-size:22px;text-align:center;" maxlength="2">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>Project Name *</label>
+          <input type="text" id="ps-name" class="form-input" placeholder="e.g. Destin Bangkok">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Niche / Industry</label>
+          <input type="text" id="ps-niche" class="form-input" placeholder="e.g. Fine Dining & European Cuisine">
+        </div>
+        <div class="form-group">
+          <label>Business Type</label>
+          <input type="text" id="ps-business-type" class="form-input" placeholder="e.g. Restaurant">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Unique Selling Point (USP)</label>
+        <input type="text" id="ps-usp" class="form-input" placeholder="What makes this business special?">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Target Age Range</label>
+          <input type="text" id="ps-target-age" class="form-input" placeholder="e.g. 25-40">
+        </div>
+        <div class="form-group">
+          <label>Tone of Voice</label>
+          <select id="ps-tone" class="form-input">
+            <option>Fun &amp; Relatable</option>
+            <option>Professional &amp; Authoritative</option>
+            <option>Inspirational &amp; Motivational</option>
+            <option>Casual &amp; Conversational</option>
+            <option>Bold &amp; Edgy</option>
+            <option>Luxury &amp; Premium</option>
+            <option>Educational &amp; Informative</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Target Interests</label>
+        <input type="text" id="ps-interests" class="form-input" placeholder="e.g. food, travel, lifestyle">
+      </div>
+      <div class="form-group">
+        <label>Pain Points</label>
+        <input type="text" id="ps-pain-points" class="form-input" placeholder="What problems does your audience have?">
+      </div>
+      <button class="btn-primary btn-block" style="margin-top:12px;" onclick="saveProjectSettings()">
+        <i class="fas fa-save"></i> Save Changes
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Campaign Grid Editor Modal ── -->
+<div id="cgGridEditorModal" class="modal-overlay">
+  <div class="modal-box" style="max-width:560px;">
+    <button class="modal-close" onclick="closeModal('cgGridEditorModal')"><i class="fas fa-times"></i></button>
+    <h2 class="modal-title"><i class="fas fa-sliders-h"></i> Setup 3 Campaign Grids</h2>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Define up to 3 content pillars. Each grid gets ~2 posts every 3 days.</p>
+    <div id="cg-editor-grids">
+      <!-- Rendered by JS -->
+    </div>
+    <button class="btn-primary btn-block" style="margin-top:16px;" onclick="saveCGGrids()"><i class="fas fa-save"></i> Save Grid Setup</button>
+  </div>
+</div>
+
+<!-- ── Add Team Member Modal ─────────────────────────────────────────── -->
+<div id="addMemberModal" class="modal-overlay">
+  <div class="modal-box modal-sm">
+    <button class="modal-close" onclick="closeModal('addMemberModal')"><i class="fas fa-times"></i></button>
+    <h2 class="modal-title"><i class="fas fa-user-plus"></i> Invite Team Member</h2>
+    <div class="form-group">
+      <label>Full Name *</label>
+      <input type="text" id="member-name-input" class="form-input" placeholder="e.g., Priya Sharma">
+    </div>
+    <div class="form-group">
+      <label>Role</label>
+      <input type="text" id="member-role-input" class="form-input" placeholder="e.g., Videographer, Designer, Copywriter">
+    </div>
+    <div class="form-group">
+      <label>Email (optional)</label>
+      <input type="email" id="member-email-input" class="form-input" placeholder="priya@example.com">
+    </div>
+    <div style="margin-top:20px;">
+      <button class="btn-primary btn-block" onclick="submitAddMember()">
+        <i class="fas fa-plus"></i> Add to Project
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Milestone Modal ───────────────────────────────────────────── -->
+<div id="addMilestoneModal" class="modal-overlay">
+  <div class="modal-box modal-sm">
+    <button class="modal-close" onclick="closeModal('addMilestoneModal')"><i class="fas fa-times"></i></button>
+    <h2 class="modal-title"><i class="fas fa-flag"></i> Add Milestone</h2>
+    <div class="form-group">
+      <label>Milestone Title *</label>
+      <input type="text" id="milestone-title-input" class="form-input" placeholder="e.g., Reach 1000 followers">
+    </div>
+    <div class="form-group">
+      <label>Due Date</label>
+      <input type="date" id="milestone-date-input" class="form-input">
+    </div>
+    <button class="btn-primary btn-block" onclick="submitAddMilestone()">
+      <i class="fas fa-flag"></i> Add Milestone
+    </button>
+  </div>
+</div>
+
+<!-- ── Concept Detail Modal ──────────────────────────────────────────── -->
+<div id="conceptModal" class="modal-overlay">
+  <div class="modal-box modal-wide modal-tall">
+    <button class="modal-close" onclick="closeModal('conceptModal')"><i class="fas fa-times"></i></button>
+    <div id="concept-modal-content" class="concept-modal-inner"></div>
+  </div>
+</div>
+
+<!-- ── Toast Notification ────────────────────────────────────────────── -->
+<div id="toast" class="toast"></div>
+
+<!-- ══════════════════════ TEAM CHAT (HANGOUT) ════════════════════════ -->
+<div id="chat-panel" class="chat-panel">
+  <!-- Header -->
+  <div class="chat-panel-header">
+    <div class="chat-header-left">
+      <div class="chat-header-icon"><i class="fas fa-comments"></i></div>
+      <div>
+        <div class="chat-header-title">Team Chat</div>
+        <div class="chat-header-sub" id="chat-header-sub">Everyone online</div>
+      </div>
+    </div>
+    <button class="chat-close-btn" onclick="toggleChat()"><i class="fas fa-times"></i></button>
+  </div>
+  <!-- Messages -->
+  <div class="chat-messages" id="chat-messages">
+    <div class="chat-empty-state">
+      <i class="fas fa-comments" style="font-size:32px;color:#c7d2fe;margin-bottom:8px;"></i>
+      <div style="font-size:13px;color:#9ca3af;">No messages yet.<br>Say hi to your team!</div>
+    </div>
+  </div>
+  <!-- Input -->
+  <div class="chat-input-row">
+    <input id="chat-input" class="chat-input" type="text"
+      placeholder="Message your team…" maxlength="1000"
+      onkeydown="chatKeydown(event)">
+    <button class="chat-send-btn" onclick="chatSend()">
+      <i class="fas fa-paper-plane"></i>
+    </button>
+  </div>
+</div>
+
+<!-- ── Floating AI Chat ───────────────────────────────────────────────── -->
+<div id="ai-chat-bubble" class="ai-chat-bubble" onclick="toggleAIChat()">
+  <i class="fas fa-robot"></i>
+  <span class="ai-bubble-label">AI Assistant</span>
+</div>
+
+<div id="ai-chat-panel" class="ai-chat-panel">
+  <div class="ai-chat-panel-header">
+    <div class="ai-chat-title">
+      <div class="ai-chat-avatar"><i class="fas fa-robot"></i></div>
+      <div>
+        <div style="font-weight:700;font-size:14px;">ContentFlow AI</div>
+        <div style="font-size:11px;color:#a5b4fc;">Ask me anything about content strategy</div>
+      </div>
+    </div>
+    <button class="ai-chat-close" onclick="toggleAIChat()"><i class="fas fa-times"></i></button>
+  </div>
+  <div id="ai-chat-messages" class="ai-chat-messages">
+    <div class="ai-msg ai">
+      <div class="ai-msg-bubble">
+        👋 Hi! I'm your ContentFlow AI assistant. Ask me anything about content strategy, hooks, captions, hashtag tips, Godfather offers, or campaign planning. I'm here to help!
+      </div>
+    </div>
+  </div>
+  <div class="ai-chat-input-row">
+    <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="Ask anything about content strategy..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+    <button class="ai-chat-send" onclick="sendChatMessage()"><i class="fas fa-paper-plane"></i></button>
+  </div>
+</div>
+
+<!-- ── Content Strategy Modal ─────────────────────────────────────────── -->
+<div id="contentStrategyModal" class="modal-overlay">
+  <div class="modal-box cs-modal-box">
+    <div class="modal-header">
+      <div>
+        <h2 style="margin:0;">💡 Content Strategy Generator</h2>
+        <p style="margin:4px 0 0;font-size:13px;color:var(--text-muted);">AI-generated value bombs and irresistible offers for your business</p>
+      </div>
+      <button onclick="closeModal('contentStrategyModal')" class="modal-close"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="cs-loading" class="cs-loading-state">
+      <i class="fas fa-spinner fa-spin cs-loading-icon"></i>
+      <p>Generating strategy ideas for your business…</p>
+    </div>
+    <div id="cs-content" style="display:none;">
+      <div class="cs-section">
+        <div class="cs-section-header">
+          <span class="cs-section-icon">🎁</span>
+          <div>
+            <strong>10 Value Bombs</strong>
+            <span class="cs-hint">Free content so good they feel they should pay for it — click to select your favorites</span>
+          </div>
+        </div>
+        <div id="cs-valuebombs" class="cs-grid"></div>
+      </div>
+      <div class="cs-section" style="margin-top:28px;">
+        <div class="cs-section-header">
+          <span class="cs-section-icon">🔥</span>
+          <div>
+            <strong>10 Godfather Offers</strong>
+            <span class="cs-hint">Offers so irresistible they feel stupid to say no — click to select what to promote</span>
+          </div>
+        </div>
+        <div id="cs-godfather" class="cs-grid"></div>
+      </div>
+      <div class="cs-footer">
+        <button class="btn-secondary" onclick="reloadContentStrategy()"><i class="fas fa-sync-alt"></i> Regenerate All</button>
+        <button class="btn-primary" onclick="closeModal('contentStrategyModal')"><i class="fas fa-check"></i> Done — Start Creating</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Task Timer removed -->
+
+<!-- ════════════════════ GRID CALENDAR MODAL ════════════════════════════ -->
+<div id="gridCalendarModal" class="modal-overlay" onclick="closeModal('gridCalendarModal')">
+  <div class="modal-box gc-modal-box" onclick="event.stopPropagation()">
+
+    <!-- ── Step 1: Choose a grid ── -->
+    <div id="grid-step-1">
+      <div class="gc-step-header">
+        <div class="gc-step-title">
+          <span class="gc-step-icon">🗓️</span>
+          <div>
+            <h2 style="font-size:20px;font-weight:800;">Choose Your Posting Grid</h2>
+            <p style="font-size:13px;color:var(--text-muted);margin-top:2px;">Pick a rotation pattern — we'll preview your full 30-day calendar before generating anything.</p>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeModal('gridCalendarModal')"><i class="fas fa-times"></i></button>
+      </div>
+      <div id="grid-template-list" class="grid-template-list"></div>
+    </div>
+
+    <!-- ── Step 2: Preview ── -->
+    <div id="grid-step-2" style="display:none;">
+      <div class="gc-step-header">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="gc-back-btn" onclick="showGridStep(1)">
+            <i class="fas fa-arrow-left"></i> Back
+          </button>
+          <div>
+            <h2 id="grid-preview-title" style="font-size:18px;font-weight:800;"></h2>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">Your 30-day content rotation — click a slot to see details</p>
+          </div>
+        </div>
+        <button class="modal-close" onclick="closeModal('gridCalendarModal')"><i class="fas fa-times"></i></button>
+      </div>
+      <div id="grid-legend" class="grid-legend"></div>
+      <div id="grid-calendar-preview" style="overflow-x:auto;"></div>
+      <div class="gc-step-footer">
+        <button class="btn-secondary" onclick="showGridStep(1)"><i class="fas fa-arrow-left"></i> Change Grid</button>
+        <button class="btn-primary gc-generate-btn" onclick="generateFromGrid()">
+          <i class="fas fa-magic"></i> Generate 30-Day Calendar From This Grid
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════ WHATSAPP MODAL ═════════════════════════════════ -->
+<div id="whatsappModal" class="modal-overlay" onclick="closeModal('whatsappModal')">
+  <div class="modal-box modal-sm" onclick="event.stopPropagation()" style="padding-top:52px;">
+    <button class="modal-close" onclick="closeModal('whatsappModal')"><i class="fas fa-times"></i></button>
+    <h2 class="modal-title" style="margin-bottom:12px;"><i class="fab fa-whatsapp" style="color:#25d366;"></i> Share Content Brief</h2>
+    <div id="wa-preview" class="wa-preview"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+      <button class="btn-primary" style="flex:1;min-width:120px;background:#25d366;border-color:#25d366;" onclick="openWhatsApp()">
+        <i class="fab fa-whatsapp"></i> WhatsApp
+      </button>
+      <button class="btn-primary" style="flex:1;min-width:120px;background:#3b82f6;border-color:#3b82f6;" onclick="openEmailShare()">
+        <i class="fas fa-envelope"></i> Email
+      </button>
+      <button class="btn-secondary" style="flex:0 0 auto;" onclick="copyWAMessage()" title="Copy to clipboard"><i class="fas fa-copy"></i> Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ USER MANAGER MODAL (admin only) ════════════════ -->
+<div id="user-mgr-modal" class="cg-day-panel" onclick="if(event.target===this)closeUserManager()">
+  <div class="cg-panel-inner" style="max-width:540px;width:100%;">
+    <button class="cg-panel-close" onclick="closeUserManager()"><i class="fas fa-times"></i></button>
+    <div style="padding:24px 28px;">
+      <h2 style="font-size:18px;font-weight:800;margin-bottom:4px;">
+        <i class="fas fa-users-cog" style="color:var(--primary);"></i> Manage Users
+      </h2>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:20px;">
+        Change roles for any user. Role changes take effect on their next page load.
+      </p>
+      <!-- Role legend -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+        <span style="font-size:11px;font-weight:700;background:#fef2f2;color:#ef4444;border:1px solid #ef444433;padding:3px 10px;border-radius:20px;">🛡️ Admin — Full Access</span>
+        <span style="font-size:11px;font-weight:700;background:#fffbeb;color:#f59e0b;border:1px solid #f59e0b33;padding:3px 10px;border-radius:20px;">⚙️ Manager — Grid + Board + Invite</span>
+        <span style="font-size:11px;font-weight:700;background:#eff6ff;color:#3b82f6;border:1px solid #3b82f633;padding:3px 10px;border-radius:20px;">💼 Executive — Calendar Only</span>
+        <span style="font-size:11px;font-weight:700;background:#f0fdf4;color:#10b981;border:1px solid #10b98133;padding:3px 10px;border-radius:20px;">🎨 Worker — Calendar Only</span>
+      </div>
+      <div id="user-mgr-list" style="display:flex;flex-direction:column;gap:8px;max-height:400px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ INVITE MODAL (admin + manager) ═════════════════ -->
+<div id="invite-modal" class="cg-day-panel" onclick="if(event.target===this)closeInviteModal()">
+  <div class="cg-panel-inner" style="max-width:460px;width:100%;">
+    <button class="cg-panel-close" onclick="closeInviteModal()"><i class="fas fa-times"></i></button>
+    <div style="padding:24px 28px;">
+      <h2 style="font-size:18px;font-weight:800;margin-bottom:4px;">
+        <i class="fas fa-user-plus" style="color:var(--primary);"></i> Invite Team Member
+      </h2>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:20px;">
+        Enter their details. We'll generate an invite link. If Twilio is configured, it's sent via WhatsApp automatically.
+      </p>
+
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label class="form-label">Full Name *</label>
+          <input id="inv-name" class="form-input" placeholder="e.g. Priya Sharma" />
+        </div>
+        <div>
+          <label class="form-label">Phone Number (for WhatsApp invite)</label>
+          <input id="inv-phone" class="form-input" placeholder="+66 81 234 5678" />
+        </div>
+        <div>
+          <label class="form-label">Email (optional)</label>
+          <input id="inv-email" class="form-input" placeholder="priya@company.com" type="email" />
+        </div>
+        <div>
+          <label class="form-label">Assign Role</label>
+          <select id="inv-role" class="form-input">
+            <option value="worker">🎨 Worker — Calendar view only</option>
+            <option value="executive">💼 Executive — Calendar + stats</option>
+            <option value="manager" id="inv-role-manager">⚙️ Manager — Grid + Board + Calendar</option>
+            <option value="admin" id="inv-role-admin" style="display:none;">🛡️ Admin — Full access</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="inv-result"></div>
+
+      <div style="display:flex;gap:8px;margin-top:20px;">
+        <button class="btn-primary" style="flex:1;" onclick="sendInvite()">
+          <i class="fas fa-paper-plane"></i> Generate Invite Link
+        </button>
+        <button class="btn-secondary" onclick="closeInviteModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Server-injected user — available before app.js runs, no async race -->
+<script>
+  window.__CF_USER__ = {{ current_user | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}?v=69"></script>
+</body>
+</html>

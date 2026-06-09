@@ -1,0 +1,21 @@
+{
+  "builds": [
+    {
+      "src": "content_calendar_app.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "content_calendar_app.py"
+    }
+  ],
+  "env": {
+    "FLASK_ENV": "production"
+  }
+}

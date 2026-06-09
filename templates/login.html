@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContentFlow — Sign In</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #6366f1; --primary-dark: #4f46e5; --primary-light: #e0e7ff;
+      --green: #10b981; --red: #ef4444; --orange: #f59e0b;
+      --text: #111827; --muted: #6b7280; --border: #e5e7eb;
+      --bg: #f3f4f6; --card: #ffffff;
+    }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 20px;
+    }
+
+    /* ── Animated background dots ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: radial-gradient(circle at 20% 50%, rgba(255,255,255,.06) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(255,255,255,.08) 0%, transparent 40%),
+                        radial-gradient(circle at 50% 80%, rgba(255,255,255,.04) 0%, transparent 50%);
+      pointer-events: none;
+    }
+
+    .login-wrap { width: 100%; max-width: 460px; position: relative; }
+
+    .login-card {
+      background: #fff; border-radius: 24px; padding: 44px 40px 36px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.22), 0 4px 20px rgba(0,0,0,.12);
+      position: relative;
+    }
+
+    /* Brand */
+    .brand { text-align: center; margin-bottom: 32px; }
+    .brand-icon {
+      width: 64px; height: 64px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 18px; display: inline-flex; align-items: center;
+      justify-content: center; font-size: 30px; margin-bottom: 14px;
+      color: white; box-shadow: 0 8px 24px rgba(99,102,241,.35);
+    }
+    .brand-name { font-size: 26px; font-weight: 800; color: #111827; letter-spacing: -.5px; }
+    .brand-sub  { font-size: 13px; color: #6b7280; margin-top: 3px; }
+
+    /* Error / success banners */
+    .error-box, .info-box {
+      border-radius: 10px; padding: 11px 14px;
+      font-size: 13px; margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .error-box { background: #fef2f2; border: 1px solid #fca5a5; color: #dc2626; }
+    .info-box  { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+
+    /* Main form */
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+    .form-input-wrap { position: relative; }
+    .form-input-wrap i {
+      position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+      color: #9ca3af; font-size: 14px; pointer-events: none;
+    }
+    .form-input {
+      width: 100%; padding: 12px 14px 12px 38px; border-radius: 10px;
+      border: 1.5px solid #e5e7eb; font-size: 14px; color: #111827;
+      background: #fff; transition: border-color .2s, box-shadow .2s; outline: none;
+    }
+    .form-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+    .form-input::placeholder { color: #9ca3af; }
+
+    /* Primary login button */
+    .btn-login {
+      width: 100%; padding: 13px; border-radius: 11px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: none; color: #fff; font-size: 15px; font-weight: 700;
+      cursor: pointer; margin-top: 6px;
+      box-shadow: 0 4px 14px rgba(99,102,241,.4);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn-login:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99,102,241,.5); }
+    .btn-login:active { transform: translateY(0); }
+
+    /* Divider */
+    .divider {
+      text-align: center; color: #9ca3af; font-size: 12px;
+      margin: 18px 0; position: relative;
+    }
+    .divider::before, .divider::after {
+      content: ''; position: absolute; top: 50%;
+      width: 42%; height: 1px; background: #e5e7eb;
+    }
+    .divider::before { left: 0; } .divider::after { right: 0; }
+
+    /* Google button */
+    .btn-google {
+      width: 100%; padding: 12px 18px; border-radius: 11px;
+      border: 1.5px solid #e5e7eb; background: #fff;
+      font-size: 14px; font-weight: 600; color: #374151;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 10px;
+      transition: all .2s; text-decoration: none;
+    }
+    .btn-google:hover { border-color: #6366f1; background: #f5f3ff; }
+    .btn-google img  { width: 18px; height: 18px; }
+
+    /* ── Demo accounts section ── */
+    .demo-section {
+      background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%);
+      border: 1.5px solid #e0e7ff;
+      border-radius: 14px; padding: 16px 18px; margin-top: 20px;
+    }
+    .demo-title {
+      font-size: 11px; font-weight: 800; color: #6366f1;
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .demo-cards {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
+    }
+    .demo-card {
+      background: #fff; border-radius: 10px; padding: 10px 12px;
+      border: 1.5px solid #e5e7eb; cursor: pointer;
+      transition: all .15s; text-decoration: none; display: block;
+    }
+    .demo-card:hover { border-color: var(--role-color); box-shadow: 0 2px 10px rgba(0,0,0,.08); transform: translateY(-1px); }
+    .demo-card-top { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+    .demo-avatar {
+      width: 26px; height: 26px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; flex-shrink: 0;
+      background: var(--role-bg); color: var(--role-color);
+    }
+    .demo-role-name { font-size: 12px; font-weight: 700; color: #111827; }
+    .demo-creds { font-size: 10px; color: #6b7280; line-height: 1.5; }
+    .demo-creds span { font-family: monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+
+    /* guest link */
+    .guest-link {
+      display: block; text-align: center; margin-top: 14px;
+      font-size: 12px; color: #9ca3af; text-decoration: none;
+      transition: color .15s;
+    }
+    .guest-link:hover { color: #6b7280; }
+    .guest-link i { margin-right: 4px; }
+
+    /* footer */
+    .footer-note {
+      text-align: center; color: #9ca3af; font-size: 11px; margin-top: 20px;
+    }
+    .footer-note a { color: #6366f1; text-decoration: none; }
+
+    /* google unavailable */
+    .google-unavailable {
+      background: #f9fafb; border: 2px dashed #e5e7eb; border-radius: 11px;
+      padding: 14px; text-align: center; color: #9ca3af; font-size: 12px; margin-bottom: 4px;
+    }
+    .google-unavailable a { color: #6366f1; text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+
+    <!-- Brand -->
+    <div class="brand">
+      <div class="brand-icon"><i class="fas fa-bolt"></i></div>
+      <div class="brand-name">ContentFlow</div>
+      <div class="brand-sub">AI-Powered Content Calendar &amp; Team Workspace</div>
+    </div>
+
+    <!-- Error banner -->
+    {% if error %}
+    <div class="error-box">
+      <i class="fas fa-exclamation-circle"></i>
+      {{ error | replace('+', ' ') }}
+    </div>
+    {% endif %}
+
+    {% if invite %}
+    <div class="info-box">
+      <i class="fas fa-envelope-open"></i>
+      You've been invited! Sign in below to accept your invite and join the workspace.
+    </div>
+    {% endif %}
+
+    <!-- Email + password form -->
+    <form method="POST" action="/auth/email" autocomplete="on">
+      <div class="form-group">
+        <label class="form-label" for="email">Email address</label>
+        <div class="form-input-wrap">
+          <i class="fas fa-envelope"></i>
+          <input id="email" name="email" type="email" class="form-input"
+                 placeholder="you@company.com" autocomplete="email" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <div class="form-input-wrap">
+          <i class="fas fa-lock"></i>
+          <input id="password" name="password" type="password" class="form-input"
+                 placeholder="••••••••" autocomplete="current-password" required>
+        </div>
+      </div>
+      <button type="submit" class="btn-login">
+        <i class="fas fa-sign-in-alt"></i>&nbsp; Sign In
+      </button>
+    </form>
+
+    <!-- Google OAuth -->
+    <div class="divider">or</div>
+    {% if google_configured %}
+    <a href="/auth/google" class="btn-google">
+      <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google">
+      Continue with Google
+    </a>
+    {% else %}
+    <div class="google-unavailable">
+      <i class="fas fa-info-circle" style="margin-bottom:4px;display:block;font-size:18px;color:#6366f1;"></i>
+      Google Sign-In not configured.&nbsp;
+      <a href="/admin">Set up OAuth in Admin Settings</a>
+    </div>
+    {% endif %}
+
+    <!-- Demo accounts -->
+    <div class="demo-section">
+      <div class="demo-title">
+        <i class="fas fa-flask"></i> Demo Accounts — click to auto-fill
+      </div>
+      <div class="demo-cards">
+
+        <a class="demo-card" href="#" onclick="fillDemo('admin@contentflow.app','admin123');return false;"
+           style="--role-color:#ef4444;--role-bg:#fef2f2;">
+          <div class="demo-card-top">
+            <div class="demo-avatar">🛡️</div>
+            <div class="demo-role-name">Admin</div>
+          </div>
+          <div class="demo-creds">
+            <span>admin@contentflow.app</span><br>
+            <span>admin123</span>
+          </div>
+        </a>
+
+        <a class="demo-card" href="#" onclick="fillDemo('manager@contentflow.app','manager123');return false;"
+           style="--role-color:#f59e0b;--role-bg:#fffbeb;">
+          <div class="demo-card-top">
+            <div class="demo-avatar">⚙️</div>
+            <div class="demo-role-name">Manager</div>
+          </div>
+          <div class="demo-creds">
+            <span>manager@contentflow.app</span><br>
+            <span>manager123</span>
+          </div>
+        </a>
+
+        <a class="demo-card" href="#" onclick="fillDemo('exec@contentflow.app','exec123');return false;"
+           style="--role-color:#3b82f6;--role-bg:#eff6ff;">
+          <div class="demo-card-top">
+            <div class="demo-avatar">💼</div>
+            <div class="demo-role-name">Executive</div>
+          </div>
+          <div class="demo-creds">
+            <span>exec@contentflow.app</span><br>
+            <span>exec123</span>
+          </div>
+        </a>
+
+        <a class="demo-card" href="#" onclick="fillDemo('worker@contentflow.app','worker123');return false;"
+           style="--role-color:#10b981;--role-bg:#f0fdf4;">
+          <div class="demo-card-top">
+            <div class="demo-avatar">🎨</div>
+            <div class="demo-role-name">Worker</div>
+          </div>
+          <div class="demo-creds">
+            <span>worker@contentflow.app</span><br>
+            <span>worker123</span>
+          </div>
+        </a>
+
+      </div>
+    </div>
+
+    <!-- Guest -->
+    {% if allow_guest %}
+    <a href="/auth/guest" class="guest-link">
+      <i class="fas fa-user-secret"></i> Continue as Guest (read-only worker)
+    </a>
+    {% endif %}
+
+    <div class="footer-note">
+      <a href="/admin"><i class="fas fa-cog"></i> Admin Settings</a>
+      &nbsp;·&nbsp;
+      <span>ContentFlow v1.0</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function fillDemo(email, password) {
+  document.getElementById('email').value    = email;
+  document.getElementById('password').value = password;
+  document.getElementById('email').form.submit();
+}
+</script>
+</body>
+</html>

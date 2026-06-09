@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.env
+.venv
+
+# Database (never commit the DB file)
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Vercel
+.vercel
+
+# Large / generated files
+*.pdf
+*.xlsx
+*.pptx
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.gif
+outputs/
+ContentFlow_Screenshots/
+Images/
+"Desktop Files"/
+Projects/
+*.sh
+seed_*.py
+
+# Misc docs not part of the app
+COMPLETE_SYSTEM_GUIDE.md
+FINAL_VALIDATION_REPORT.txt
+LAUNCH_NOW.txt
+MVP_*.md
+START_HERE.md
+SYSTEM_COMPLETE.md
+DESTIN_*.xlsx
+*_ProjectProposal_*.pdf
+*_Tamil_*.pdf
+PuduAlert_*.pdf
+DATA_ANALYTICS_*.md
+Screenshot*.png
+.htaccess
+.localized
+.dart_tool/
